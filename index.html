@@ -16,15 +16,22 @@
   .carte button{margin:10px 0 0;max-width:none}
   .quitter{background:#c0392b;color:#fff}
   .gris{background:#8aa;color:#022}
-  .felt{max-width:340px;margin:10px auto;background:#1b7a4f;border:6px solid #5a3a1a;border-radius:40px;padding:14px}
-  .centre{margin:0 0 12px;padding:12px;background:#145a43;border-radius:14px}
-  .cartes{display:flex;justify-content:center;gap:6px;margin-top:8px}
-  .cartes span{width:42px;height:58px;border:2px dashed #7fc;border-radius:6px;box-sizing:border-box}
-  .seats{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-  .siege{background:#0e3b2a;border-radius:10px;padding:10px;min-height:64px;text-align:left}
-  .siege.moi{outline:3px solid #f4b400}
-  .siege.vide{opacity:.4}
+
+  .salle{position:relative;width:100%;max-width:340px;height:470px;margin:10px auto}
+  .felt{position:absolute;left:14%;right:14%;top:9%;bottom:9%;background:#1b7a4f;border:8px solid #5a3a1a;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;box-sizing:border-box}
+  .pot{font-size:15px;margin-bottom:8px}
+  .cartes{display:flex;gap:3px}
+  .cartes span{width:30px;height:44px;border:2px dashed #7fc;border-radius:5px;box-sizing:border-box}
+  .siege{position:absolute;width:92px;transform:translate(-50%,-50%);background:#0e3b2a;border:2px solid #5a3a1a;border-radius:12px;padding:6px;text-align:center;font-size:12px;box-sizing:border-box}
   .siege b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .siege.moi{border-color:#f4b400;box-shadow:0 0 10px #f4b400}
+  .siege.vide{opacity:.45;font-size:11px}
+  .pos0{left:50%;top:6%}
+  .pos1{left:84%;top:26%}
+  .pos2{left:84%;top:74%}
+  .pos3{left:50%;top:94%}
+  .pos4{left:16%;top:74%}
+  .pos5{left:16%;top:26%}
 </style>
 </head>
 <body>
@@ -49,12 +56,12 @@
 
 <div id="tableView" style="display:none">
   <h2 id="titreTable"></h2>
-  <div class="felt">
-    <div class="centre">
-      <div>Pot : <b id="pot">0</b></div>
+  <div class="salle">
+    <div class="felt">
+      <div class="pot">Pot : <b id="pot">0</b></div>
       <div class="cartes"><span></span><span></span><span></span><span></span><span></span></div>
     </div>
-    <div class="seats" id="sieges"></div>
+    <div id="sieges"></div>
   </div>
   <button id="btnRetour" class="gris">← Retour au lobby</button>
   <button id="btnQuitterTable" class="quitter">Quitter la table</button>
@@ -109,17 +116,22 @@ function dessinerTable(t) {
   const sieges = $("sieges");
   sieges.textContent = "";
   const joueurs = t.players || [];
-  for (let i = 0; i < t.maxPlayers; i++) {
+  const total = 6;
+  const monIndex = joueurs.findIndex(p => p.uid === auth.currentUser.uid);
+  const decalage = monIndex >= 0 ? (3 - monIndex + total) % total : 0;
+
+  for (let i = 0; i < total; i++) {
     const p = joueurs[i];
     const s = document.createElement("div");
-    s.className = "siege";
+    s.className = "siege pos" + ((i + decalage) % total);
     if (!p) {
       s.classList.add("vide");
-      s.textContent = "Siège libre";
+      s.textContent = "🪑 Libre";
     } else {
-      if (p.uid === auth.currentUser.uid) s.classList.add("moi");
+      const moi = p.uid === auth.currentUser.uid;
+      if (moi) s.classList.add("moi");
       const nom = document.createElement("b");
-      nom.textContent = p.name + (p.uid === auth.currentUser.uid ? " (toi)" : "");
+      nom.textContent = moi ? "Toi" : p.name;
       const jetons = document.createElement("div");
       jetons.textContent = typeof p.stack === "number" ? "🪙 " + p.stack : "🪙 —";
       s.append(nom, jetons);
