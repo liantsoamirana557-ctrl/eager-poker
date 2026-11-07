@@ -9,25 +9,40 @@
   input,button{display:block;width:100%;max-width:320px;margin:10px auto;padding:12px;font-size:16px;border-radius:8px;border:0;box-sizing:border-box}
   button{background:#f4b400;font-weight:bold}
   #msg{margin-top:15px;min-height:24px}
+  .bar{max-width:320px;margin:0 auto 10px;display:flex;justify-content:space-between;font-weight:bold}
+  .carte{max-width:320px;margin:10px auto;padding:12px;background:#145a43;border-radius:10px;text-align:left}
+  .carte h3{margin:0 0 6px}
+  .carte small{color:#cde}
+  .carte button{margin:10px 0 0;max-width:none}
+  .quitter{background:#c0392b;color:#fff}
 </style>
 </head>
 <body>
 <h1>♠ Eager Poker ♥</h1>
-<div id="connecte" style="display:none">
-  <p id="bienvenue"></p>
-  <button id="btnSortir">Se déconnecter</button>
-</div>
+
 <div id="formulaire">
   <input id="email" type="email" placeholder="E-mail">
   <input id="mdp" type="password" placeholder="Mot de passe (6 caractères min.)">
   <button id="btnEntrer">Se connecter</button>
   <button id="btnCreer">Créer un compte</button>
 </div>
+
+<div id="lobby" style="display:none">
+  <div class="bar"><span id="pseudo"></span><span id="jetons"></span></div>
+  <h2>Créer une table</h2>
+  <input id="nomTable" type="text" maxlength="30" placeholder="Nom de la table">
+  <button id="btnTable">Créer la table</button>
+  <h2>Tables ouvertes</h2>
+  <div id="liste"></div>
+  <button id="btnSortir" class="quitter">Se déconnecter</button>
+</div>
+
 <div id="msg"></div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, addDoc, query, orderBy, updateDoc, arrayUnion, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDXyNNGTWwifena8SSHqvwqyAno0S9vRAM",
@@ -40,11 +55,12 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+const db = getFirestore(app);
 const $ = id => document.getElementById(id);
 const msg = t => $("msg").textContent = t;
 
 $("btnCreer").onclick = async () => {
-  try { await createUserWithEmailAndPassword(auth, $("email").value, $("mdp").value); msg("Compte créé !"); }
+  try { await createUserWithEmailAndPassword(auth, $("email").value, $("mdp").value); msg(""); }
   catch (e) { msg("Erreur : " + e.code); }
 };
 $("btnEntrer").onclick = async () => {
@@ -53,10 +69,107 @@ $("btnEntrer").onclick = async () => {
 };
 $("btnSortir").onclick = () => signOut(auth);
 
-onAuthStateChanged(auth, user => {
+$("btnTable").onclick = async () => {
+  const nom = $("nomTable").value.trim();
+  if (!nom) { msg("Donne un nom à la table."); return; }
+  try {
+    await addDoc(collection(db, "tables"), {
+      name: nom,
+      owner: auth.currentUser.uid,
+      maxPlayers: 6,
+      smallBlind: 10,
+      bigBlind: 20,
+      players: [],
+      createdAt: serverTimestamp()
+    });
+    $("nomTable").value = "";
+    msg("");
+  } catch (e) { msg("Erreur : " + e.code); }
+};
+
+async function rejoindre(id, pseudo) {
+  try {
+    await updateDoc(doc(db, "tables", id), {
+      players: arrayUnion({ uid: auth.currentUser.uid, name: pseudo })
+    });
+  } catch (e) { msg("Erreur : " + e.code); }
+}
+
+async function quitter(id) {
+  try {
+    const ref = doc(db, "tables", id);
+    const snap = await getDoc(ref);
+    const reste = (snap.data().players || []).filter(p => p.uid !== auth.currentUser.uid);
+    await updateDoc(ref, { players: reste });
+  } catch (e) { msg("Erreur : " + e.code); }
+}
+
+function afficherTables(snap, user, pseudo) {
+  const liste = $("liste");
+  liste.textContent = "";
+  if (snap.empty) { liste.textContent = "Aucune table pour l'instant. Crée la première !"; return; }
+  snap.forEach(d => {
+    const t = d.data();
+    const joueurs = t.players || [];
+    const dedans = joueurs.some(p => p.uid === user.uid);
+    const carte = document.createElement("div");
+    carte.className = "carte";
+
+    const titre = document.createElement("h3");
+    titre.textContent = t.name;
+    const info = document.createElement("small");
+    info.textContent = joueurs.length + "/" + t.maxPlayers + " joueurs · blinds " + t.smallBlind + "/" + t.bigBlind;
+    const noms = document.createElement("div");
+    noms.textContent = joueurs.length ? joueurs.map(p => p.name).join(", ") : "Table vide";
+
+    const bouton = document.createElement("button");
+    if (dedans) {
+      bouton.textContent = "Quitter la table";
+      bouton.className = "quitter";
+      bouton.onclick = () => quitter(d.id);
+    } else if (joueurs.length >= t.maxPlayers) {
+      bouton.textContent = "Table pleine";
+      bouton.disabled = true;
+    } else {
+      bouton.textContent = "Rejoindre";
+      bouton.onclick = () => rejoindre(d.id, pseudo);
+    }
+
+    carte.append(titre, info, noms, bouton);
+    liste.appendChild(carte);
+  });
+}
+
+let stopUser = null, stopTables = null;
+
+onAuthStateChanged(auth, async user => {
+  if (stopUser) { stopUser(); stopUser = null; }
+  if (stopTables) { stopTables(); stopTables = null; }
+
   $("formulaire").style.display = user ? "none" : "block";
-  $("connecte").style.display = user ? "block" : "none";
-  if (user) $("bienvenue").textContent = "Connecté : " + user.email;
+  $("lobby").style.display = user ? "block" : "none";
+  if (!user) return;
+
+  const pseudo = user.email.split("@")[0];
+  $("pseudo").textContent = pseudo;
+
+  const ref = doc(db, "users", user.uid);
+  try {
+    const snap = await getDoc(ref);
+    if (!snap.exists()) {
+      await setDoc(ref, { email: user.email, name: pseudo, chips: 1000, createdAt: serverTimestamp() });
+    }
+  } catch (e) { msg("Erreur : " + e.code); }
+
+  stopUser = onSnapshot(ref, s => {
+    if (s.exists()) $("jetons").textContent = "🪙 " + s.data().chips + " jetons";
+  });
+
+  stopTables = onSnapshot(
+    query(collection(db, "tables"), orderBy("createdAt", "desc")),
+    snap => afficherTables(snap, user, pseudo),
+    e => msg("Erreur : " + e.code)
+  );
 });
 </script>
 </body>
