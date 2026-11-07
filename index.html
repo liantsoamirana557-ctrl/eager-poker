@@ -7,7 +7,9 @@
 <style>
   body{font-family:sans-serif;background:#0b3d2e;color:#fff;margin:0;padding:20px;text-align:center}
   input,button{display:block;width:100%;max-width:320px;margin:10px auto;padding:12px;font-size:16px;border-radius:8px;border:0;box-sizing:border-box}
+  input[type=range]{padding:0}
   button{background:#f4b400;font-weight:bold}
+  button:disabled{opacity:.5}
   #msg{margin-top:15px;min-height:24px}
   .bar{max-width:320px;margin:0 auto 10px;display:flex;justify-content:space-between;font-weight:bold}
   .carte{max-width:320px;margin:10px auto;padding:12px;background:#145a43;border-radius:10px;text-align:left}
@@ -18,15 +20,17 @@
   .gris{background:#8aa;color:#022}
 
   .salle{position:relative;width:100%;max-width:340px;height:470px;margin:10px auto 60px}
-  .felt{position:absolute;left:14%;right:14%;top:9%;bottom:9%;background:#1b7a4f;border:8px solid #5a3a1a;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;box-sizing:border-box}
+  .felt{position:absolute;left:14%;right:14%;top:9%;bottom:9%;background:#1b7a4f;border:8px solid #5a3a1a;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;box-sizing:border-box;padding:0 6px}
   .pot{font-size:15px;margin-bottom:8px}
   #phase{font-size:12px;color:#cde;margin-bottom:6px;min-height:15px}
   .rangee{display:flex;justify-content:center;gap:3px;margin-top:4px}
   .siege{position:absolute;width:92px;transform:translate(-50%,-50%);background:#0e3b2a;border:2px solid #5a3a1a;border-radius:12px;padding:6px;text-align:center;font-size:12px;box-sizing:border-box}
   .siege b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .siege.moi{border-color:#f4b400;box-shadow:0 0 10px #f4b400}
+  .siege.tour{border-color:#4cf;box-shadow:0 0 12px #4cf}
   .siege.vide{opacity:.45;font-size:11px}
   .tag{font-size:10px;color:#f4b400;min-height:12px}
+  .mise{font-size:11px;color:#ffd}
   .pos0{left:50%;top:6%}
   .pos1{left:84%;top:26%}
   .pos2{left:84%;top:74%}
@@ -41,6 +45,9 @@
   .cc.dos{background:repeating-linear-gradient(45deg,#2c3e90,#2c3e90 4px,#1d2a66 4px,#1d2a66 8px);border:2px solid #fff;color:transparent}
   .cc.vide-carte{background:transparent;border:2px dashed #7fc}
   #maMainBox{margin:0 auto 10px}
+  #actions,#choixGagnant{max-width:320px;margin:0 auto 10px;padding:10px;background:#145a43;border-radius:10px}
+  #actions button,#actions input,#choixGagnant button{margin:8px auto}
+  #dernier{margin-top:12px;color:#cde;font-size:14px}
 </style>
 </head>
 <body>
@@ -79,12 +86,23 @@
     <div class="rangee" id="maMain"></div>
   </div>
 
+  <div id="actions" style="display:none">
+    <div id="infoAction"></div>
+    <button id="btnFold" class="quitter">Se coucher</button>
+    <button id="btnCall">Check</button>
+    <input type="range" id="slider">
+    <button id="btnRaise">Relancer</button>
+    <button id="btnAllin" class="gris">Tapis</button>
+  </div>
+
+  <div id="choixGagnant" style="display:none"></div>
+
   <div id="attente" style="display:none">En attente d'un 2e joueur…</div>
   <button id="btnLancer" style="display:none">Lancer la main</button>
-  <button id="btnSuite" style="display:none">Étape suivante</button>
-  <button id="btnFin" class="gris" style="display:none">Terminer la main (test)</button>
+  <button id="btnFin" class="gris" style="display:none">Annuler la main (rembourse les mises)</button>
   <button id="btnRetour" class="gris">← Retour au lobby</button>
   <button id="btnQuitterTable" class="quitter">Quitter la table</button>
+  <div id="dernier"></div>
 </div>
 
 <div id="msg"></div>
@@ -108,9 +126,14 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const $ = id => document.getElementById(id);
 const msg = t => $("msg").textContent = t;
+const moi = () => auth.currentUser ? auth.currentUser.uid : null;
 
+const DELAI = 10000;
 let tableCourante = null;
 let stopUser = null, stopTables = null, stopTable = null;
+let etat = null;
+let cleActions = "";
+let derniereCle = "", dernierEnvoi = 0;
 
 /* ---------- Cartes ---------- */
 const RANGS = ["2","3","4","5","6","7","8","9","10","J","Q","K","A"];
@@ -148,10 +171,264 @@ function videEl() {
   return el;
 }
 
+/* ---------- Moteur de jeu (mises) ---------- */
+function sommePot(h) {
+  return Object.values(h.paid || {}).reduce((a, b) => a + b, 0);
+}
+
+function miser(h, players, uid, montant) {
+  const p = players.find(x => x.uid === uid);
+  const a = Math.max(0, Math.min(montant, p.stack));
+  p.stack -= a;
+  h.bets[uid] = (h.bets[uid] || 0) + a;
+  h.paid[uid] = (h.paid[uid] || 0) + a;
+  if (p.stack === 0) h.allin[uid] = true;
+  return a;
+}
+
+function prochainActeur(h, depuis) {
+  const n = h.order.length;
+  for (let k = 1; k <= n; k++) {
+    const u = h.order[(depuis + k) % n];
+    if (!h.folded[u] && !h.allin[u]) return u;
+  }
+  return null;
+}
+
+function distribuerRue(h) {
+  h.deck.pop(); // carte brûlée
+  if (h.stage === "preflop") { h.board.push(h.deck.pop(), h.deck.pop(), h.deck.pop()); h.stage = "flop"; }
+  else if (h.stage === "flop") { h.board.push(h.deck.pop()); h.stage = "turn"; }
+  else if (h.stage === "turn") { h.board.push(h.deck.pop()); h.stage = "river"; }
+}
+
+function passerAuTour(h, bb) {
+  const live = h.order.filter(u => !h.folded[u]);
+  while (true) {
+    if (h.stage === "river") { h.stage = "showdown"; h.turn = null; h.deadline = null; return; }
+    distribuerRue(h);
+    h.bets = {}; h.acted = {}; h.currentBet = 0; h.minRaise = bb;
+    const canAct = live.filter(u => !h.allin[u]);
+    if (canAct.length >= 2) {
+      h.turn = prochainActeur(h, 0);
+      h.deadline = Date.now() + DELAI;
+      return;
+    }
+  }
+}
+
+function gagnerPot(t, uid, raison) {
+  const h = t.hand;
+  const pot = sommePot(h);
+  const p = t.players.find(x => x.uid === uid);
+  p.stack += pot;
+  t.dernier = p.name + " gagne " + pot + " (" + raison + ")";
+  t.dealerUid = h.dealer;
+  t.pot = 0;
+  t.hand = null;
+}
+
+function tourSuivantOuFin(t) {
+  const h = t.hand;
+  const live = h.order.filter(u => !h.folded[u]);
+  if (live.length === 1) { gagnerPot(t, live[0], "tous les autres se sont couchés"); return; }
+
+  const canAct = live.filter(u => !h.allin[u]);
+  let fini;
+  if (canAct.length === 0) fini = true;
+  else if (canAct.length === 1) fini = (h.bets[canAct[0]] || 0) >= h.currentBet;
+  else fini = canAct.every(u => h.acted[u] && (h.bets[u] || 0) === h.currentBet);
+
+  if (fini) passerAuTour(h, t.bigBlind);
+  else {
+    h.turn = prochainActeur(h, h.order.indexOf(h.turn));
+    h.deadline = Date.now() + DELAI;
+  }
+  t.pot = sommePot(h);
+}
+
+function appliquerAction(t, uid, type, montant) {
+  const h = t.hand;
+  if (!h || h.turn !== uid) throw new Error("pasvotretour");
+  const players = t.players;
+  const joueur = players.find(p => p.uid === uid);
+  const deja = h.bets[uid] || 0;
+  const aPayer = h.currentBet - deja;
+
+  if (type === "fold") {
+    h.folded[uid] = true;
+  } else if (type === "check") {
+    if (aPayer > 0) throw new Error("pascheck");
+    h.acted[uid] = true;
+  } else if (type === "call") {
+    miser(h, players, uid, aPayer);
+    h.acted[uid] = true;
+  } else if (type === "raise") {
+    let cible = Math.floor(Number(montant));
+    const maxCible = deja + joueur.stack;
+    if (!(cible > 0)) throw new Error("montant");
+    if (cible >= maxCible) cible = maxCible;
+    else if (cible < h.currentBet + h.minRaise) throw new Error("tropbas");
+    miser(h, players, uid, cible - deja);
+    const total = h.bets[uid];
+    if (total > h.currentBet) {
+      const inc = total - h.currentBet;
+      if (inc >= h.minRaise) h.minRaise = inc;
+      h.currentBet = total;
+      h.acted = {};
+    }
+    h.acted[uid] = true;
+  } else {
+    throw new Error("action");
+  }
+  tourSuivantOuFin(t);
+}
+
+async function transaction(fn) {
+  await runTransaction(db, async tx => {
+    const ref = doc(db, "tables", tableCourante);
+    const snap = await tx.get(ref);
+    const t = snap.data();
+    fn(t);
+    tx.update(ref, {
+      players: t.players,
+      pot: t.pot || 0,
+      hand: t.hand || null,
+      dealerUid: t.dealerUid || null,
+      dernier: t.dernier || ""
+    });
+  });
+}
+
+function erreurJeu(e) {
+  const m = e.message;
+  if (m === "min2") msg("Il faut au moins 2 joueurs avec des jetons.");
+  else if (m === "deja") msg("Une main est déjà en cours.");
+  else if (m === "pasvotretour") msg("Ce n'est pas ton tour.");
+  else if (m === "tropbas") msg("Relance trop faible.");
+  else if (m === "pascheck") msg("Tu dois suivre ou te coucher.");
+  else if (m === "obsolete") { /* déjà traité par un autre joueur */ }
+  else msg("Erreur : " + (e.code || m));
+}
+
+async function lancerMain() {
+  if (!tableCourante) return;
+  try {
+    await transaction(t => {
+      if (t.hand) throw new Error("deja");
+      const players = t.players.map(p => ({ ...p }));
+      players.forEach(p => { if (typeof p.stack !== "number") p.stack = 1000; });
+      const elig = players.filter(p => p.stack > 0);
+      if (elig.length < 2) throw new Error("min2");
+
+      let dealerUid = null;
+      const start = players.findIndex(p => p.uid === t.dealerUid);
+      for (let k = 1; k <= players.length; k++) {
+        const p = players[(start + k) % players.length];
+        if (p.stack > 0) { dealerUid = p.uid; break; }
+      }
+      const di = elig.findIndex(p => p.uid === dealerUid);
+      const order = [...elig.slice(di), ...elig.slice(0, di)].map(p => p.uid);
+      const n = order.length;
+      const sbIdx = n === 2 ? 0 : 1;
+      const bbIdx = n === 2 ? 1 : 2;
+
+      const deck = melanger(paquet());
+      const hands = {};
+      order.forEach(u => { hands[u] = [deck.pop(), deck.pop()]; });
+
+      const h = {
+        stage: "preflop", deck, hands, board: [],
+        order, dealer: order[0], sb: order[sbIdx], bb: order[bbIdx],
+        bets: {}, paid: {}, folded: {}, allin: {}, acted: {},
+        currentBet: 0, minRaise: t.bigBlind, turn: null, deadline: null
+      };
+      miser(h, players, h.sb, t.smallBlind);
+      miser(h, players, h.bb, t.bigBlind);
+      h.currentBet = Math.max(...Object.values(h.bets));
+
+      t.players = players;
+      t.hand = h;
+      t.dealerUid = order[0];
+      t.dernier = "";
+
+      const canAct = order.filter(u => !h.allin[u]);
+      if (canAct.length === 0 || (canAct.length === 1 && (h.bets[canAct[0]] || 0) >= h.currentBet)) {
+        passerAuTour(h, t.bigBlind);
+      } else {
+        h.turn = prochainActeur(h, bbIdx);
+        h.deadline = Date.now() + DELAI;
+      }
+      t.pot = sommePot(h);
+    });
+    msg("");
+  } catch (e) { erreurJeu(e); }
+}
+
+async function jouer(type, montant) {
+  if (!tableCourante) return;
+  try {
+    await transaction(t => appliquerAction(t, moi(), type, montant));
+    msg("");
+  } catch (e) { erreurJeu(e); }
+}
+
+async function annulerMain() {
+  if (!tableCourante) return;
+  try {
+    await transaction(t => {
+      const h = t.hand;
+      if (!h) return;
+      t.players.forEach(p => { p.stack = (p.stack || 0) + (h.paid[p.uid] || 0); });
+      t.dernier = "Main annulée, mises rendues.";
+      t.dealerUid = h.dealer;
+      t.pot = 0;
+      t.hand = null;
+    });
+    msg("");
+  } catch (e) { erreurJeu(e); }
+}
+
+async function attribuer(uid) {
+  if (!tableCourante) return;
+  try {
+    await transaction(t => {
+      const h = t.hand;
+      if (!h || h.stage !== "showdown") throw new Error("obsolete");
+      gagnerPot(t, uid, "attribué à la main (test)");
+    });
+    msg("");
+  } catch (e) { erreurJeu(e); }
+}
+
+async function expirer(turn, deadline) {
+  await transaction(t => {
+    const h = t.hand;
+    if (!h || h.turn !== turn || h.deadline !== deadline) throw new Error("obsolete");
+    const aPayer = h.currentBet - (h.bets[turn] || 0);
+    appliquerAction(t, turn, aPayer > 0 ? "fold" : "check");
+  });
+}
+
+function verifierChrono() {
+  const h = etat && etat.hand;
+  if (!h || !h.turn || !h.deadline) return;
+  if (!h.order.includes(moi())) return;
+  const maintenant = Date.now();
+  const delai = h.turn === moi() ? 300 : 4000;
+  if (maintenant <= h.deadline + delai) return;
+  const cle = h.turn + "|" + h.deadline;
+  if (derniereCle === cle && maintenant - dernierEnvoi < 3000) return;
+  derniereCle = cle;
+  dernierEnvoi = maintenant;
+  expirer(h.turn, h.deadline).catch(() => {});
+}
+
 /* ---------- Navigation ---------- */
 function montrerLobby() {
   if (stopTable) { stopTable(); stopTable = null; }
   tableCourante = null;
+  etat = null;
   $("tableView").style.display = "none";
   $("lobby").style.display = "block";
 }
@@ -169,25 +446,38 @@ function ouvrirTable(id) {
 }
 
 /* ---------- Affichage de la table ---------- */
-const PHASES = { preflop: "Pré-flop", flop: "Flop", turn: "Turn", river: "River" };
-const SUITE = { preflop: "Distribuer le flop", flop: "Distribuer le turn", turn: "Distribuer la river" };
+const PHASES = { preflop: "Pré-flop", flop: "Flop", turn: "Turn", river: "River", showdown: "Abattage" };
+
+function majTexte() {
+  if (!etat) return;
+  const h = etat.hand;
+  let txt = "";
+  if (h) {
+    txt = PHASES[h.stage] || "";
+    if (h.turn) {
+      const p = etat.players.find(x => x.uid === h.turn);
+      const s = Math.max(0, Math.ceil((h.deadline - Date.now()) / 1000));
+      txt += " · " + (h.turn === moi() ? "À toi" : "Au tour de " + (p ? p.name : "?")) + " · " + s + " s";
+    }
+  }
+  $("phase").textContent = txt;
+}
 
 function dessinerTable(t) {
-  const uid = auth.currentUser.uid;
+  etat = t;
+  const uid = moi();
   const h = t.hand || null;
   const joueurs = t.players || [];
 
   $("titreTable").textContent = t.name;
   $("pot").textContent = t.pot || 0;
-  $("phase").textContent = h ? "Phase : " + PHASES[h.stage] : "";
+  majTexte();
 
-  // cartes communes
   const board = $("board");
   board.textContent = "";
   const communes = h ? (h.board || []) : [];
   for (let i = 0; i < 5; i++) board.appendChild(communes[i] ? carteEl(communes[i], "") : videEl());
 
-  // sièges
   const sieges = $("sieges");
   sieges.textContent = "";
   const total = 6;
@@ -202,28 +492,38 @@ function dessinerTable(t) {
       s.classList.add("vide");
       s.textContent = "🪑 Libre";
     } else {
-      const moi = p.uid === uid;
-      if (moi) s.classList.add("moi");
+      const c'est = p.uid === uid;
+      if (c'est) s.classList.add("moi");
+      if (h && h.turn === p.uid) s.classList.add("tour");
       const nom = document.createElement("b");
-      nom.textContent = moi ? "Toi" : p.name;
+      nom.textContent = c'est ? "Toi" : p.name;
       const jetons = document.createElement("div");
       jetons.textContent = typeof p.stack === "number" ? "🪙 " + p.stack : "🪙 —";
       s.append(nom, jetons);
 
-      if (h) {
+      if (h && h.order.includes(p.uid)) {
         const tags = [];
         if (h.dealer === p.uid) tags.push("D");
         if (h.sb === p.uid) tags.push("PB");
         if (h.bb === p.uid) tags.push("GB");
+        if (h.folded[p.uid]) tags.push("Couché");
+        else if (h.allin[p.uid]) tags.push("Tapis");
         const tag = document.createElement("div");
         tag.className = "tag";
         tag.textContent = tags.join(" · ");
         s.appendChild(tag);
 
-        if (!moi && h.hands && h.hands[p.uid]) {
+        if ((h.bets[p.uid] || 0) > 0) {
+          const mise = document.createElement("div");
+          mise.className = "mise";
+          mise.textContent = "mise " + h.bets[p.uid];
+          s.appendChild(mise);
+        }
+        if (!h.folded[p.uid] && !c'est && h.hands && h.hands[p.uid]) {
           const rg = document.createElement("div");
           rg.className = "rangee";
-          rg.append(dosEl(), dosEl());
+          if (h.stage === "showdown") h.hands[p.uid].forEach(c => rg.appendChild(carteEl(c, "petit")));
+          else rg.append(dosEl(), dosEl());
           s.appendChild(rg);
         }
       }
@@ -231,14 +531,13 @@ function dessinerTable(t) {
     sieges.appendChild(s);
   }
 
-  // mes cartes
   const boite = $("maMainBox");
   const maMain = $("maMain");
   maMain.textContent = "";
   const mesCartes = h && h.hands ? h.hands[uid] : null;
   if (mesCartes) {
     boite.style.display = "block";
-    $("maMainTitre").textContent = "Tes cartes";
+    $("maMainTitre").textContent = h.folded[uid] ? "Tes cartes (tu t'es couché)" : "Tes cartes";
     mesCartes.forEach(c => maMain.appendChild(carteEl(c, "grand")));
   } else if (h) {
     boite.style.display = "block";
@@ -247,128 +546,91 @@ function dessinerTable(t) {
     boite.style.display = "none";
   }
 
-  // boutons d'action
+  const cg = $("choixGagnant");
+  cg.textContent = "";
+  if (h && h.stage === "showdown" && h.order.includes(uid)) {
+    const titre = document.createElement("div");
+    titre.textContent = "Abattage : qui gagne le pot de " + (t.pot || 0) + " ? (test, calcul automatique à l'étape 4)";
+    cg.appendChild(titre);
+    h.order.filter(u => !h.folded[u]).forEach(u => {
+      const p = joueurs.find(x => x.uid === u);
+      const b = document.createElement("button");
+      b.className = "gris";
+      b.textContent = "Donner le pot à " + (u === uid ? "moi" : (p ? p.name : "?"));
+      b.onclick = () => attribuer(u);
+      cg.appendChild(b);
+    });
+    cg.style.display = "block";
+  } else {
+    cg.style.display = "none";
+  }
+
   $("attente").style.display = (!h && joueurs.length < 2) ? "block" : "none";
   $("btnLancer").style.display = (!h && joueurs.length >= 2) ? "" : "none";
-  $("btnSuite").style.display = (h && h.stage !== "river") ? "" : "none";
-  if (h && h.stage !== "river") $("btnSuite").textContent = SUITE[h.stage];
-  $("btnFin").style.display = h ? "" : "none";
+  $("btnFin").style.display = (h && h.order.includes(uid)) ? "" : "none";
+  $("dernier").textContent = t.dernier ? "Dernière main : " + t.dernier : "";
+
+  majActions(t);
 }
 
-/* ---------- Actions de jeu ---------- */
-function erreurJeu(e) {
-  if (e.message === "min2") msg("Il faut au moins 2 joueurs.");
-  else if (e.message === "deja") msg("Une main est déjà en cours.");
-  else if (e.message === "pasdemain") msg("Aucune main en cours.");
-  else msg("Erreur : " + (e.code || e.message));
+function majActions(t) {
+  const h = t.hand;
+  const uid = moi();
+  const panneau = $("actions");
+  if (!h || h.turn !== uid) { panneau.style.display = "none"; cleActions = ""; return; }
+  panneau.style.display = "block";
+
+  const joueur = t.players.find(p => p.uid === uid);
+  const deja = h.bets[uid] || 0;
+  const aPayer = h.currentBet - deja;
+  const maxTo = deja + joueur.stack;
+  const minTo = Math.min(h.currentBet + h.minRaise, maxTo);
+  const cle = [h.stage, h.turn, h.currentBet, h.minRaise, deja, joueur.stack].join("|");
+  if (cle === cleActions) return;
+  cleActions = cle;
+
+  $("infoAction").textContent = "À toi de jouer ! " + (aPayer > 0 ? "À suivre : " + Math.min(aPayer, joueur.stack) : "Rien à payer");
+
+  const bc = $("btnCall");
+  bc.textContent = aPayer > 0 ? "Suivre " + Math.min(aPayer, joueur.stack) : "Check";
+  bc.dataset.type = aPayer > 0 ? "call" : "check";
+
+  const peutRelancer = maxTo > h.currentBet;
+  const slider = $("slider");
+  const br = $("btnRaise");
+  const ba = $("btnAllin");
+  if (peutRelancer) {
+    ba.style.display = "";
+    ba.textContent = "Tapis (" + maxTo + ")";
+    ba.dataset.cible = maxTo;
+    if (maxTo > minTo) {
+      slider.min = minTo;
+      slider.max = maxTo;
+      slider.step = t.smallBlind || 10;
+      slider.value = minTo;
+      slider.style.display = "";
+      br.style.display = "";
+      br.textContent = "Relancer à " + slider.value;
+    } else {
+      slider.style.display = "none";
+      br.style.display = "none";
+    }
+  } else {
+    slider.style.display = "none";
+    br.style.display = "none";
+    ba.style.display = "none";
+  }
 }
 
-async function lancerMain() {
-  if (!tableCourante) return;
-  try {
-    await runTransaction(db, async tx => {
-      const ref = doc(db, "tables", tableCourante);
-      const snap = await tx.get(ref);
-      const t = snap.data();
-      if (t.hand) throw new Error("deja");
-      const players = (t.players || []).map(p => ({ ...p }));
-      const n = players.length;
-      if (n < 2) throw new Error("min2");
-
-      const dealerIdx = ((typeof t.dealerIdx === "number" ? t.dealerIdx : -1) + 1) % n;
-      const sbIdx = n === 2 ? dealerIdx : (dealerIdx + 1) % n;
-      const bbIdx = n === 2 ? (dealerIdx + 1) % n : (dealerIdx + 2) % n;
-
-      const paid = {};
-      const payer = (i, montant) => {
-        const dispo = typeof players[i].stack === "number" ? players[i].stack : 0;
-        const a = Math.min(montant, dispo);
-        players[i].stack = dispo - a;
-        paid[players[i].uid] = (paid[players[i].uid] || 0) + a;
-        return a;
-      };
-      const pot = payer(sbIdx, t.smallBlind) + payer(bbIdx, t.bigBlind);
-
-      const deck = melanger(paquet());
-      const hands = {};
-      players.forEach(p => { hands[p.uid] = [deck.pop(), deck.pop()]; });
-
-      tx.update(ref, {
-        players,
-        pot,
-        dealerIdx,
-        hand: {
-          stage: "preflop",
-          deck,
-          hands,
-          board: [],
-          dealer: players[dealerIdx].uid,
-          sb: players[sbIdx].uid,
-          bb: players[bbIdx].uid,
-          paid
-        }
-      });
-    });
-    msg("");
-  } catch (e) { erreurJeu(e); }
-}
-
-async function etapeSuivante() {
-  if (!tableCourante) return;
-  try {
-    await runTransaction(db, async tx => {
-      const ref = doc(db, "tables", tableCourante);
-      const snap = await tx.get(ref);
-      const h = snap.data().hand;
-      if (!h) throw new Error("pasdemain");
-      const deck = h.deck.slice();
-      const board = (h.board || []).slice();
-
-      if (h.stage === "preflop") {
-        deck.pop();
-        board.push(deck.pop(), deck.pop(), deck.pop());
-        h.stage = "flop";
-      } else if (h.stage === "flop") {
-        deck.pop();
-        board.push(deck.pop());
-        h.stage = "turn";
-      } else if (h.stage === "turn") {
-        deck.pop();
-        board.push(deck.pop());
-        h.stage = "river";
-      } else {
-        return;
-      }
-      h.deck = deck;
-      h.board = board;
-      tx.update(ref, { hand: h });
-    });
-    msg("");
-  } catch (e) { erreurJeu(e); }
-}
-
-async function terminerMain() {
-  if (!tableCourante) return;
-  try {
-    await runTransaction(db, async tx => {
-      const ref = doc(db, "tables", tableCourante);
-      const snap = await tx.get(ref);
-      const t = snap.data();
-      if (!t.hand) throw new Error("pasdemain");
-      const paid = t.hand.paid || {};
-      const players = (t.players || []).map(p => ({
-        ...p,
-        stack: (typeof p.stack === "number" ? p.stack : 0) + (paid[p.uid] || 0)
-      }));
-      tx.update(ref, { players, pot: 0, hand: null });
-    });
-    msg("");
-  } catch (e) { erreurJeu(e); }
-}
-
+$("slider").oninput = () => { $("btnRaise").textContent = "Relancer à " + $("slider").value; };
+$("btnFold").onclick = () => jouer("fold");
+$("btnCall").onclick = () => jouer($("btnCall").dataset.type);
+$("btnRaise").onclick = () => jouer("raise", $("slider").value);
+$("btnAllin").onclick = () => jouer("raise", $("btnAllin").dataset.cible);
 $("btnLancer").onclick = lancerMain;
-$("btnSuite").onclick = etapeSuivante;
-$("btnFin").onclick = terminerMain;
+$("btnFin").onclick = annulerMain;
+
+setInterval(() => { majTexte(); verifierChrono(); }, 500);
 
 /* ---------- Compte et lobby ---------- */
 $("btnCreer").onclick = async () => {
@@ -475,6 +737,7 @@ onAuthStateChanged(auth, async user => {
   if (stopTables) { stopTables(); stopTables = null; }
   if (stopTable) { stopTable(); stopTable = null; }
   tableCourante = null;
+  etat = null;
   $("tableView").style.display = "none";
 
   $("formulaire").style.display = user ? "none" : "block";
