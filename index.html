@@ -17,21 +17,30 @@
   .quitter{background:#c0392b;color:#fff}
   .gris{background:#8aa;color:#022}
 
-  .salle{position:relative;width:100%;max-width:340px;height:470px;margin:10px auto}
+  .salle{position:relative;width:100%;max-width:340px;height:470px;margin:10px auto 60px}
   .felt{position:absolute;left:14%;right:14%;top:9%;bottom:9%;background:#1b7a4f;border:8px solid #5a3a1a;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;box-sizing:border-box}
   .pot{font-size:15px;margin-bottom:8px}
-  .cartes{display:flex;gap:3px}
-  .cartes span{width:30px;height:44px;border:2px dashed #7fc;border-radius:5px;box-sizing:border-box}
+  #phase{font-size:12px;color:#cde;margin-bottom:6px;min-height:15px}
+  .rangee{display:flex;justify-content:center;gap:3px;margin-top:4px}
   .siege{position:absolute;width:92px;transform:translate(-50%,-50%);background:#0e3b2a;border:2px solid #5a3a1a;border-radius:12px;padding:6px;text-align:center;font-size:12px;box-sizing:border-box}
   .siege b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .siege.moi{border-color:#f4b400;box-shadow:0 0 10px #f4b400}
   .siege.vide{opacity:.45;font-size:11px}
+  .tag{font-size:10px;color:#f4b400;min-height:12px}
   .pos0{left:50%;top:6%}
   .pos1{left:84%;top:26%}
   .pos2{left:84%;top:74%}
   .pos3{left:50%;top:94%}
   .pos4{left:16%;top:74%}
   .pos5{left:16%;top:26%}
+
+  .cc{display:flex;flex-direction:column;align-items:center;justify-content:center;width:30px;height:44px;background:#fff;color:#111;border-radius:5px;font-weight:bold;font-size:13px;line-height:1.15;box-sizing:border-box}
+  .cc.petit{width:22px;height:32px;font-size:10px}
+  .cc.grand{width:56px;height:80px;font-size:20px;border-radius:8px}
+  .cc.rouge{color:#c0392b}
+  .cc.dos{background:repeating-linear-gradient(45deg,#2c3e90,#2c3e90 4px,#1d2a66 4px,#1d2a66 8px);border:2px solid #fff;color:transparent}
+  .cc.vide-carte{background:transparent;border:2px dashed #7fc}
+  #maMainBox{margin:0 auto 10px}
 </style>
 </head>
 <body>
@@ -59,10 +68,21 @@
   <div class="salle">
     <div class="felt">
       <div class="pot">Pot : <b id="pot">0</b></div>
-      <div class="cartes"><span></span><span></span><span></span><span></span><span></span></div>
+      <div id="phase"></div>
+      <div class="rangee" id="board"></div>
     </div>
     <div id="sieges"></div>
   </div>
+
+  <div id="maMainBox" style="display:none">
+    <div id="maMainTitre"></div>
+    <div class="rangee" id="maMain"></div>
+  </div>
+
+  <div id="attente" style="display:none">En attente d'un 2e joueur…</div>
+  <button id="btnLancer" style="display:none">Lancer la main</button>
+  <button id="btnSuite" style="display:none">Étape suivante</button>
+  <button id="btnFin" class="gris" style="display:none">Terminer la main (test)</button>
   <button id="btnRetour" class="gris">← Retour au lobby</button>
   <button id="btnQuitterTable" class="quitter">Quitter la table</button>
 </div>
@@ -72,7 +92,7 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, addDoc, query, orderBy, updateDoc, arrayUnion, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, addDoc, query, orderBy, updateDoc, arrayUnion, serverTimestamp, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDXyNNGTWwifena8SSHqvwqyAno0S9vRAM",
@@ -92,6 +112,43 @@ const msg = t => $("msg").textContent = t;
 let tableCourante = null;
 let stopUser = null, stopTables = null, stopTable = null;
 
+/* ---------- Cartes ---------- */
+const RANGS = ["2","3","4","5","6","7","8","9","10","J","Q","K","A"];
+const COULEURS = ["♠","♥","♦","♣"];
+
+function paquet() {
+  const p = [];
+  for (const s of COULEURS) for (const r of RANGS) p.push(r + s);
+  return p;
+}
+function melanger(a) {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = crypto.getRandomValues(new Uint32Array(1))[0] % (i + 1);
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function carteEl(c, taille) {
+  const el = document.createElement("div");
+  el.className = "cc " + (taille || "");
+  if (c.endsWith("♥") || c.endsWith("♦")) el.classList.add("rouge");
+  const r = document.createElement("div"); r.textContent = c.slice(0, -1);
+  const s = document.createElement("div"); s.textContent = c.slice(-1);
+  el.append(r, s);
+  return el;
+}
+function dosEl() {
+  const el = document.createElement("div");
+  el.className = "cc petit dos";
+  return el;
+}
+function videEl() {
+  const el = document.createElement("div");
+  el.className = "cc vide-carte";
+  return el;
+}
+
+/* ---------- Navigation ---------- */
 function montrerLobby() {
   if (stopTable) { stopTable(); stopTable = null; }
   tableCourante = null;
@@ -101,6 +158,7 @@ function montrerLobby() {
 
 function ouvrirTable(id) {
   tableCourante = id;
+  msg("");
   $("lobby").style.display = "none";
   $("tableView").style.display = "block";
   if (stopTable) stopTable();
@@ -110,14 +168,30 @@ function ouvrirTable(id) {
   }, e => msg("Erreur : " + e.code));
 }
 
+/* ---------- Affichage de la table ---------- */
+const PHASES = { preflop: "Pré-flop", flop: "Flop", turn: "Turn", river: "River" };
+const SUITE = { preflop: "Distribuer le flop", flop: "Distribuer le turn", turn: "Distribuer la river" };
+
 function dessinerTable(t) {
+  const uid = auth.currentUser.uid;
+  const h = t.hand || null;
+  const joueurs = t.players || [];
+
   $("titreTable").textContent = t.name;
   $("pot").textContent = t.pot || 0;
+  $("phase").textContent = h ? "Phase : " + PHASES[h.stage] : "";
+
+  // cartes communes
+  const board = $("board");
+  board.textContent = "";
+  const communes = h ? (h.board || []) : [];
+  for (let i = 0; i < 5; i++) board.appendChild(communes[i] ? carteEl(communes[i], "") : videEl());
+
+  // sièges
   const sieges = $("sieges");
   sieges.textContent = "";
-  const joueurs = t.players || [];
   const total = 6;
-  const monIndex = joueurs.findIndex(p => p.uid === auth.currentUser.uid);
+  const monIndex = joueurs.findIndex(p => p.uid === uid);
   const decalage = monIndex >= 0 ? (3 - monIndex + total) % total : 0;
 
   for (let i = 0; i < total; i++) {
@@ -128,18 +202,175 @@ function dessinerTable(t) {
       s.classList.add("vide");
       s.textContent = "🪑 Libre";
     } else {
-      const moi = p.uid === auth.currentUser.uid;
+      const moi = p.uid === uid;
       if (moi) s.classList.add("moi");
       const nom = document.createElement("b");
       nom.textContent = moi ? "Toi" : p.name;
       const jetons = document.createElement("div");
       jetons.textContent = typeof p.stack === "number" ? "🪙 " + p.stack : "🪙 —";
       s.append(nom, jetons);
+
+      if (h) {
+        const tags = [];
+        if (h.dealer === p.uid) tags.push("D");
+        if (h.sb === p.uid) tags.push("PB");
+        if (h.bb === p.uid) tags.push("GB");
+        const tag = document.createElement("div");
+        tag.className = "tag";
+        tag.textContent = tags.join(" · ");
+        s.appendChild(tag);
+
+        if (!moi && h.hands && h.hands[p.uid]) {
+          const rg = document.createElement("div");
+          rg.className = "rangee";
+          rg.append(dosEl(), dosEl());
+          s.appendChild(rg);
+        }
+      }
     }
     sieges.appendChild(s);
   }
+
+  // mes cartes
+  const boite = $("maMainBox");
+  const maMain = $("maMain");
+  maMain.textContent = "";
+  const mesCartes = h && h.hands ? h.hands[uid] : null;
+  if (mesCartes) {
+    boite.style.display = "block";
+    $("maMainTitre").textContent = "Tes cartes";
+    mesCartes.forEach(c => maMain.appendChild(carteEl(c, "grand")));
+  } else if (h) {
+    boite.style.display = "block";
+    $("maMainTitre").textContent = "Tu regardes cette main (tu joueras à la suivante)";
+  } else {
+    boite.style.display = "none";
+  }
+
+  // boutons d'action
+  $("attente").style.display = (!h && joueurs.length < 2) ? "block" : "none";
+  $("btnLancer").style.display = (!h && joueurs.length >= 2) ? "" : "none";
+  $("btnSuite").style.display = (h && h.stage !== "river") ? "" : "none";
+  if (h && h.stage !== "river") $("btnSuite").textContent = SUITE[h.stage];
+  $("btnFin").style.display = h ? "" : "none";
 }
 
+/* ---------- Actions de jeu ---------- */
+function erreurJeu(e) {
+  if (e.message === "min2") msg("Il faut au moins 2 joueurs.");
+  else if (e.message === "deja") msg("Une main est déjà en cours.");
+  else if (e.message === "pasdemain") msg("Aucune main en cours.");
+  else msg("Erreur : " + (e.code || e.message));
+}
+
+async function lancerMain() {
+  if (!tableCourante) return;
+  try {
+    await runTransaction(db, async tx => {
+      const ref = doc(db, "tables", tableCourante);
+      const snap = await tx.get(ref);
+      const t = snap.data();
+      if (t.hand) throw new Error("deja");
+      const players = (t.players || []).map(p => ({ ...p }));
+      const n = players.length;
+      if (n < 2) throw new Error("min2");
+
+      const dealerIdx = ((typeof t.dealerIdx === "number" ? t.dealerIdx : -1) + 1) % n;
+      const sbIdx = n === 2 ? dealerIdx : (dealerIdx + 1) % n;
+      const bbIdx = n === 2 ? (dealerIdx + 1) % n : (dealerIdx + 2) % n;
+
+      const paid = {};
+      const payer = (i, montant) => {
+        const dispo = typeof players[i].stack === "number" ? players[i].stack : 0;
+        const a = Math.min(montant, dispo);
+        players[i].stack = dispo - a;
+        paid[players[i].uid] = (paid[players[i].uid] || 0) + a;
+        return a;
+      };
+      const pot = payer(sbIdx, t.smallBlind) + payer(bbIdx, t.bigBlind);
+
+      const deck = melanger(paquet());
+      const hands = {};
+      players.forEach(p => { hands[p.uid] = [deck.pop(), deck.pop()]; });
+
+      tx.update(ref, {
+        players,
+        pot,
+        dealerIdx,
+        hand: {
+          stage: "preflop",
+          deck,
+          hands,
+          board: [],
+          dealer: players[dealerIdx].uid,
+          sb: players[sbIdx].uid,
+          bb: players[bbIdx].uid,
+          paid
+        }
+      });
+    });
+    msg("");
+  } catch (e) { erreurJeu(e); }
+}
+
+async function etapeSuivante() {
+  if (!tableCourante) return;
+  try {
+    await runTransaction(db, async tx => {
+      const ref = doc(db, "tables", tableCourante);
+      const snap = await tx.get(ref);
+      const h = snap.data().hand;
+      if (!h) throw new Error("pasdemain");
+      const deck = h.deck.slice();
+      const board = (h.board || []).slice();
+
+      if (h.stage === "preflop") {
+        deck.pop();
+        board.push(deck.pop(), deck.pop(), deck.pop());
+        h.stage = "flop";
+      } else if (h.stage === "flop") {
+        deck.pop();
+        board.push(deck.pop());
+        h.stage = "turn";
+      } else if (h.stage === "turn") {
+        deck.pop();
+        board.push(deck.pop());
+        h.stage = "river";
+      } else {
+        return;
+      }
+      h.deck = deck;
+      h.board = board;
+      tx.update(ref, { hand: h });
+    });
+    msg("");
+  } catch (e) { erreurJeu(e); }
+}
+
+async function terminerMain() {
+  if (!tableCourante) return;
+  try {
+    await runTransaction(db, async tx => {
+      const ref = doc(db, "tables", tableCourante);
+      const snap = await tx.get(ref);
+      const t = snap.data();
+      if (!t.hand) throw new Error("pasdemain");
+      const paid = t.hand.paid || {};
+      const players = (t.players || []).map(p => ({
+        ...p,
+        stack: (typeof p.stack === "number" ? p.stack : 0) + (paid[p.uid] || 0)
+      }));
+      tx.update(ref, { players, pot: 0, hand: null });
+    });
+    msg("");
+  } catch (e) { erreurJeu(e); }
+}
+
+$("btnLancer").onclick = lancerMain;
+$("btnSuite").onclick = etapeSuivante;
+$("btnFin").onclick = terminerMain;
+
+/* ---------- Compte et lobby ---------- */
 $("btnCreer").onclick = async () => {
   try { await createUserWithEmailAndPassword(auth, $("email").value, $("mdp").value); msg(""); }
   catch (e) { msg("Erreur : " + e.code); }
@@ -185,7 +416,9 @@ async function quitter(id) {
   try {
     const ref = doc(db, "tables", id);
     const snap = await getDoc(ref);
-    const reste = (snap.data().players || []).filter(p => p.uid !== auth.currentUser.uid);
+    const t = snap.data();
+    if (t.hand) { msg("Attends la fin de la main pour quitter la table."); return; }
+    const reste = (t.players || []).filter(p => p.uid !== auth.currentUser.uid);
     await updateDoc(ref, { players: reste });
     if (tableCourante === id) montrerLobby();
   } catch (e) { msg("Erreur : " + e.code); }
@@ -208,7 +441,7 @@ function afficherTables(snap, user, pseudo) {
     const titre = document.createElement("h3");
     titre.textContent = t.name;
     const info = document.createElement("small");
-    info.textContent = joueurs.length + "/" + t.maxPlayers + " joueurs · blinds " + t.smallBlind + "/" + t.bigBlind;
+    info.textContent = joueurs.length + "/" + t.maxPlayers + " joueurs · blinds " + t.smallBlind + "/" + t.bigBlind + (t.hand ? " · main en cours" : "");
     const noms = document.createElement("div");
     noms.textContent = joueurs.length ? joueurs.map(p => p.name).join(", ") : "Table vide";
     carte.append(titre, info, noms);
