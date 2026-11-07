@@ -15,6 +15,16 @@
   .carte small{color:#cde}
   .carte button{margin:10px 0 0;max-width:none}
   .quitter{background:#c0392b;color:#fff}
+  .gris{background:#8aa;color:#022}
+  .felt{max-width:340px;margin:10px auto;background:#1b7a4f;border:6px solid #5a3a1a;border-radius:40px;padding:14px}
+  .centre{margin:0 0 12px;padding:12px;background:#145a43;border-radius:14px}
+  .cartes{display:flex;justify-content:center;gap:6px;margin-top:8px}
+  .cartes span{width:42px;height:58px;border:2px dashed #7fc;border-radius:6px;box-sizing:border-box}
+  .seats{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .siege{background:#0e3b2a;border-radius:10px;padding:10px;min-height:64px;text-align:left}
+  .siege.moi{outline:3px solid #f4b400}
+  .siege.vide{opacity:.4}
+  .siege b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -35,6 +45,19 @@
   <h2>Tables ouvertes</h2>
   <div id="liste"></div>
   <button id="btnSortir" class="quitter">Se déconnecter</button>
+</div>
+
+<div id="tableView" style="display:none">
+  <h2 id="titreTable"></h2>
+  <div class="felt">
+    <div class="centre">
+      <div>Pot : <b id="pot">0</b></div>
+      <div class="cartes"><span></span><span></span><span></span><span></span><span></span></div>
+    </div>
+    <div class="seats" id="sieges"></div>
+  </div>
+  <button id="btnRetour" class="gris">← Retour au lobby</button>
+  <button id="btnQuitterTable" class="quitter">Quitter la table</button>
 </div>
 
 <div id="msg"></div>
@@ -59,6 +82,52 @@ const db = getFirestore(app);
 const $ = id => document.getElementById(id);
 const msg = t => $("msg").textContent = t;
 
+let tableCourante = null;
+let stopUser = null, stopTables = null, stopTable = null;
+
+function montrerLobby() {
+  if (stopTable) { stopTable(); stopTable = null; }
+  tableCourante = null;
+  $("tableView").style.display = "none";
+  $("lobby").style.display = "block";
+}
+
+function ouvrirTable(id) {
+  tableCourante = id;
+  $("lobby").style.display = "none";
+  $("tableView").style.display = "block";
+  if (stopTable) stopTable();
+  stopTable = onSnapshot(doc(db, "tables", id), snap => {
+    if (!snap.exists()) { montrerLobby(); msg("Cette table n'existe plus."); return; }
+    dessinerTable(snap.data());
+  }, e => msg("Erreur : " + e.code));
+}
+
+function dessinerTable(t) {
+  $("titreTable").textContent = t.name;
+  $("pot").textContent = t.pot || 0;
+  const sieges = $("sieges");
+  sieges.textContent = "";
+  const joueurs = t.players || [];
+  for (let i = 0; i < t.maxPlayers; i++) {
+    const p = joueurs[i];
+    const s = document.createElement("div");
+    s.className = "siege";
+    if (!p) {
+      s.classList.add("vide");
+      s.textContent = "Siège libre";
+    } else {
+      if (p.uid === auth.currentUser.uid) s.classList.add("moi");
+      const nom = document.createElement("b");
+      nom.textContent = p.name + (p.uid === auth.currentUser.uid ? " (toi)" : "");
+      const jetons = document.createElement("div");
+      jetons.textContent = typeof p.stack === "number" ? "🪙 " + p.stack : "🪙 —";
+      s.append(nom, jetons);
+    }
+    sieges.appendChild(s);
+  }
+}
+
 $("btnCreer").onclick = async () => {
   try { await createUserWithEmailAndPassword(auth, $("email").value, $("mdp").value); msg(""); }
   catch (e) { msg("Erreur : " + e.code); }
@@ -79,6 +148,7 @@ $("btnTable").onclick = async () => {
       maxPlayers: 6,
       smallBlind: 10,
       bigBlind: 20,
+      pot: 0,
       players: [],
       createdAt: serverTimestamp()
     });
@@ -89,9 +159,13 @@ $("btnTable").onclick = async () => {
 
 async function rejoindre(id, pseudo) {
   try {
+    const u = await getDoc(doc(db, "users", auth.currentUser.uid));
+    const stack = u.exists() ? u.data().chips : 1000;
     await updateDoc(doc(db, "tables", id), {
-      players: arrayUnion({ uid: auth.currentUser.uid, name: pseudo })
+      players: arrayUnion({ uid: auth.currentUser.uid, name: pseudo, stack: stack })
     });
+    msg("");
+    ouvrirTable(id);
   } catch (e) { msg("Erreur : " + e.code); }
 }
 
@@ -101,8 +175,12 @@ async function quitter(id) {
     const snap = await getDoc(ref);
     const reste = (snap.data().players || []).filter(p => p.uid !== auth.currentUser.uid);
     await updateDoc(ref, { players: reste });
+    if (tableCourante === id) montrerLobby();
   } catch (e) { msg("Erreur : " + e.code); }
 }
+
+$("btnRetour").onclick = () => montrerLobby();
+$("btnQuitterTable").onclick = () => { if (tableCourante) quitter(tableCourante); };
 
 function afficherTables(snap, user, pseudo) {
   const liste = $("liste");
@@ -121,30 +199,38 @@ function afficherTables(snap, user, pseudo) {
     info.textContent = joueurs.length + "/" + t.maxPlayers + " joueurs · blinds " + t.smallBlind + "/" + t.bigBlind;
     const noms = document.createElement("div");
     noms.textContent = joueurs.length ? joueurs.map(p => p.name).join(", ") : "Table vide";
+    carte.append(titre, info, noms);
 
-    const bouton = document.createElement("button");
     if (dedans) {
-      bouton.textContent = "Quitter la table";
-      bouton.className = "quitter";
-      bouton.onclick = () => quitter(d.id);
-    } else if (joueurs.length >= t.maxPlayers) {
-      bouton.textContent = "Table pleine";
-      bouton.disabled = true;
+      const ouvrir = document.createElement("button");
+      ouvrir.textContent = "Ouvrir la table";
+      ouvrir.onclick = () => ouvrirTable(d.id);
+      const sortir = document.createElement("button");
+      sortir.textContent = "Quitter la table";
+      sortir.className = "quitter";
+      sortir.onclick = () => quitter(d.id);
+      carte.append(ouvrir, sortir);
     } else {
-      bouton.textContent = "Rejoindre";
-      bouton.onclick = () => rejoindre(d.id, pseudo);
+      const bouton = document.createElement("button");
+      if (joueurs.length >= t.maxPlayers) {
+        bouton.textContent = "Table pleine";
+        bouton.disabled = true;
+      } else {
+        bouton.textContent = "Rejoindre";
+        bouton.onclick = () => rejoindre(d.id, pseudo);
+      }
+      carte.append(bouton);
     }
-
-    carte.append(titre, info, noms, bouton);
     liste.appendChild(carte);
   });
 }
 
-let stopUser = null, stopTables = null;
-
 onAuthStateChanged(auth, async user => {
   if (stopUser) { stopUser(); stopUser = null; }
   if (stopTables) { stopTables(); stopTables = null; }
+  if (stopTable) { stopTable(); stopTable = null; }
+  tableCourante = null;
+  $("tableView").style.display = "none";
 
   $("formulaire").style.display = user ? "none" : "block";
   $("lobby").style.display = user ? "block" : "none";
