@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Eager Poker</title>
+<style>
+  body{font-family:sans-serif;background:#0b3d2e;color:#fff;margin:0;padding:20px;text-align:center}
+  input,button{display:block;width:100%;max-width:320px;margin:10px auto;padding:12px;font-size:16px;border-radius:8px;border:0;box-sizing:border-box}
+  button{background:#f4b400;font-weight:bold}
+  #msg{margin-top:15px;min-height:24px}
+</style>
+</head>
+<body>
+<h1>♠ Eager Poker ♥</h1>
+<div id="connecte" style="display:none">
+  <p id="bienvenue"></p>
+  <button id="btnSortir">Se déconnecter</button>
+</div>
+<div id="formulaire">
+  <input id="email" type="email" placeholder="E-mail">
+  <input id="mdp" type="password" placeholder="Mot de passe (6 caractères min.)">
+  <button id="btnEntrer">Se connecter</button>
+  <button id="btnCreer">Créer un compte</button>
+</div>
+<div id="msg"></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDXyNNGTWwifena8SSHqvwqyAno0S9vRAM",
+  authDomain: "eager-poker.firebaseapp.com",
+  projectId: "eager-poker",
+  storageBucket: "eager-poker.firebasestorage.app",
+  messagingSenderId: "755914114241",
+  appId: "1:755914114241:web:32712cbaee6d2a2163c040"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const $ = id => document.getElementById(id);
+const msg = t => $("msg").textContent = t;
+
+$("btnCreer").onclick = async () => {
+  try { await createUserWithEmailAndPassword(auth, $("email").value, $("mdp").value); msg("Compte créé !"); }
+  catch (e) { msg("Erreur : " + e.code); }
+};
+$("btnEntrer").onclick = async () => {
+  try { await signInWithEmailAndPassword(auth, $("email").value, $("mdp").value); msg(""); }
+  catch (e) { msg("Erreur : " + e.code); }
+};
+$("btnSortir").onclick = () => signOut(auth);
+
+onAuthStateChanged(auth, user => {
+  $("formulaire").style.display = user ? "none" : "block";
+  $("connecte").style.display = user ? "block" : "none";
+  if (user) $("bienvenue").textContent = "Connecté : " + user.email;
+});
+</script>
+</body>
+</html>
