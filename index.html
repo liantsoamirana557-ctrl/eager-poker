@@ -81,23 +81,21 @@
     <h3>Mon profil</h3>
     <input id="nouveauPseudo" type="text" maxlength="14" placeholder="Nouveau pseudo (2 à 14 lettres)">
     <button id="btnPseudo" class="gris">Changer mon pseudo</button>
-    <div class="mini">Mon identifiant : <span id="monUid"></span></div>
+    <span id="monUid" hidden></span>
   </div>
 
   <div class="boite">
-    <h3>Jetons gratuits</h3>
-    <div class="mini">Le nombre en haut est ton compte principal. Tes gains y sont toujours comptés. Les jetons ne sont pas donnés automatiquement : fais une demande, Mirana l'accepte.</div>
+    <h3>Jetons</h3>
     <select id="montant"><option value="1000">1 000 jetons</option><option value="2000">2 000 jetons</option><option value="5000">5 000 jetons</option></select>
     <button id="btnDemande">Demander à Mirana</button>
-    <input id="rendre" type="number" min="1" placeholder="Jetons à rendre à Mirana">
+    <input id="rendre" type="number" min="1" placeholder="Jetons à rendre">
     <button id="btnRendre" class="gris">Rendre à Mirana</button>
     <div id="mesDemandes"></div>
   </div>
 
   <div class="boite">
-    <h3>Ma cave pour s'asseoir</h3>
-    <input id="cave" type="number" min="2000" step="100" value="2000">
-    <div class="mini">Cave minimum : 2 000 jetons. Tu peux mettre plus. Elle est prise sur ton compte, et ce que tu as devant toi y retourne quand tu quittes la table.</div>
+    <h3>Cave</h3>
+    <input id="cave" type="number" min="2000" step="100" value="2000" placeholder="Cave (min 2000)">
   </div>
 
   <div class="boite" id="adminBox" style="display:none">
