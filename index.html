@@ -6,7 +6,7 @@
 <title>Eager Poker</title>
 <style>
   body{font-family:sans-serif;background:#0b3d2e;color:#fff;margin:0;padding:20px;text-align:center}
-  input,button{display:block;width:100%;max-width:320px;margin:10px auto;padding:12px;font-size:16px;border-radius:8px;border:0;box-sizing:border-box}
+  input,button,select{display:block;width:100%;max-width:260px;margin:8px auto;padding:8px 12px;font-size:14px;border-radius:8px;border:0;box-sizing:border-box}
   input[type=range]{padding:0}
   button{background:#f4b400;font-weight:bold}
   button:disabled{opacity:.5}
@@ -15,7 +15,7 @@
   .carte{max-width:320px;margin:10px auto;padding:12px;background:#145a43;border-radius:10px;text-align:left}
   .carte h3{margin:0 0 6px}
   .carte small{color:#cde}
-  .carte button{margin:10px 0 0;max-width:none}
+  .carte button{display:inline-block;width:auto;margin:8px 6px 0 0;padding:7px 14px;max-width:none}
   .quitter{background:#c0392b;color:#fff}
   .gris{background:#8aa;color:#022}
 
@@ -40,13 +40,27 @@
 
   .cc{display:flex;flex-direction:column;align-items:center;justify-content:center;width:30px;height:44px;background:#fff;color:#111;border-radius:5px;font-weight:bold;font-size:13px;line-height:1.15;box-sizing:border-box}
   .cc.petit{width:22px;height:32px;font-size:10px}
-  .cc.grand{width:56px;height:80px;font-size:20px;border-radius:8px}
+  .cc.grand{width:44px;height:62px;font-size:17px;border-radius:8px}
   .cc.rouge{color:#c0392b}
   .cc.dos{background:repeating-linear-gradient(45deg,#2c3e90,#2c3e90 4px,#1d2a66 4px,#1d2a66 8px);border:2px solid #fff;color:transparent}
   .cc.vide-carte{background:transparent;border:2px dashed #7fc}
   #maMainBox{margin:0 auto 10px}
-  #actions,#choixGagnant{max-width:320px;margin:0 auto 10px;padding:10px;background:#145a43;border-radius:10px}
-  #actions button,#actions input,#choixGagnant button{margin:8px auto}
+  #actions,#choixGagnant{max-width:300px;margin:0 auto 10px;padding:10px;background:#145a43;border-radius:10px}
+  #actions{grid-template-columns:1fr 1fr;gap:8px}
+  #actions #infoAction,#zoneRaise,#btnRaise{grid-column:1/-1}
+  #actions button{margin:0;width:100%;max-width:none;padding:8px 6px;font-size:14px}
+  #btnRaise{padding:12px 6px;font-size:16px;letter-spacing:.5px}
+  #zoneRaise{display:flex;gap:8px;align-items:center}
+  #zoneRaise input{flex:1;width:auto;max-width:none;margin:0}
+  #zoneRaise button{width:auto;padding:6px 10px;font-size:13px}
+  #choixGagnant button{margin:6px auto}
+  .boite{max-width:320px;margin:10px auto;padding:10px;background:#145a43;border-radius:10px;text-align:left}
+  .boite h3{margin:0 0 6px;font-size:15px}
+  .mini{font-size:12px;color:#cde;word-break:break-all}
+  .ligne{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;padding:6px 0;border-top:1px solid #ffffff22;text-align:left}
+  .ligne .btns{display:flex;gap:6px;flex:none}
+  .ligne button{width:auto;margin:0;padding:6px 10px;font-size:13px}
+  .att{color:#ffd37a}.ok{color:#7fe3a0}.non{color:#ff9a9a}
   #dernier{margin-top:12px;color:#cde;font-size:14px}
 </style>
 </head>
@@ -62,6 +76,37 @@
 
 <div id="lobby" style="display:none">
   <div class="bar"><span id="pseudo"></span><span id="jetons"></span></div>
+
+  <div class="boite">
+    <h3>Mon profil</h3>
+    <input id="nouveauPseudo" type="text" maxlength="14" placeholder="Nouveau pseudo (2 à 14 lettres)">
+    <button id="btnPseudo" class="gris">Changer mon pseudo</button>
+    <div class="mini">Mon identifiant : <span id="monUid"></span></div>
+  </div>
+
+  <div class="boite">
+    <h3>Jetons gratuits</h3>
+    <div class="mini">Le nombre en haut est ton compte principal. Tes gains y sont toujours comptés. Les jetons ne sont pas donnés automatiquement : fais une demande, Mirana l'accepte.</div>
+    <select id="montant"><option value="1000">1 000 jetons</option><option value="2000">2 000 jetons</option><option value="5000">5 000 jetons</option></select>
+    <button id="btnDemande">Demander à Mirana</button>
+    <input id="rendre" type="number" min="1" placeholder="Jetons à rendre à Mirana">
+    <button id="btnRendre" class="gris">Rendre à Mirana</button>
+    <div id="mesDemandes"></div>
+  </div>
+
+  <div class="boite">
+    <h3>Ma cave pour s'asseoir</h3>
+    <input id="cave" type="number" min="2000" step="100" value="2000">
+    <div class="mini">Cave minimum : 2 000 jetons. Tu peux mettre plus. Elle est prise sur ton compte, et ce que tu as devant toi y retourne quand tu quittes la table.</div>
+  </div>
+
+  <div class="boite" id="adminBox" style="display:none">
+    <h3>Mirana : demandes de jetons <span id="nbAttente"></span></h3>
+    <div id="demandesAttente"></div>
+    <h3 style="margin-top:12px">Historique</h3>
+    <div id="historique"></div>
+  </div>
+
   <h2>Créer une table</h2>
   <input id="nomTable" type="text" maxlength="30" placeholder="Nom de la table">
   <button id="btnTable">Créer la table</button>
@@ -88,11 +133,10 @@
 
   <div id="actions" style="display:none">
     <div id="infoAction"></div>
-    <button id="btnFold" class="quitter">Se coucher</button>
+    <div id="zoneRaise"><input type="range" id="slider"><button id="btnAllin" class="gris">Tapis</button></div>
+    <button id="btnRaise">Raise</button>
     <button id="btnCall">Check</button>
-    <input type="range" id="slider">
-    <button id="btnRaise">Relancer</button>
-    <button id="btnAllin" class="gris">Tapis</button>
+    <button id="btnFold" class="quitter">Se coucher</button>
   </div>
 
   <div id="choixGagnant" style="display:none"></div>
@@ -110,7 +154,7 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, addDoc, query, orderBy, updateDoc, arrayUnion, serverTimestamp, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, addDoc, query, orderBy, updateDoc, arrayUnion, serverTimestamp, runTransaction, where, limit } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDXyNNGTWwifena8SSHqvwqyAno0S9vRAM",
@@ -129,6 +173,8 @@ const msg = t => $("msg").textContent = t;
 const moi = () => auth.currentUser ? auth.currentUser.uid : null;
 
 const DELAI = 10000;
+const ADMIN_UID = "vIia3H24Mla7zkdEBdUTn0VaIkD3";
+let pseudoCourant = "", dernierTables = null, mesDemandes = [], stopDem = null, stopAdmin = null;
 let tableCourante = null;
 let stopUser = null, stopTables = null, stopTable = null;
 let etat = null;
@@ -469,7 +515,7 @@ function dessinerTable(t) {
   const h = t.hand || null;
   const joueurs = t.players || [];
 
-  $("titreTable").textContent = t.name;
+  $("titreTable").textContent = t.name + (uid === ADMIN_UID ? " (vue Mirana : toutes les cartes)" : "");
   $("pot").textContent = t.pot || 0;
   majTexte();
 
@@ -519,10 +565,11 @@ function dessinerTable(t) {
           mise.textContent = "mise " + h.bets[p.uid];
           s.appendChild(mise);
         }
-        if (!h.folded[p.uid] && !estMoi && h.hands && h.hands[p.uid]) {
+        const admin = uid === ADMIN_UID;
+        if ((admin || !h.folded[p.uid]) && !estMoi && h.hands && h.hands[p.uid]) {
           const rg = document.createElement("div");
           rg.className = "rangee";
-          if (h.stage === "showdown") h.hands[p.uid].forEach(c => rg.appendChild(carteEl(c, "petit")));
+          if (admin || h.stage === "showdown") h.hands[p.uid].forEach(c => rg.appendChild(carteEl(c, "petit")));
           else rg.append(dosEl(), dosEl());
           s.appendChild(rg);
         }
@@ -578,7 +625,7 @@ function majActions(t) {
   const uid = moi();
   const panneau = $("actions");
   if (!h || h.turn !== uid) { panneau.style.display = "none"; cleActions = ""; return; }
-  panneau.style.display = "block";
+  panneau.style.display = "grid";
 
   const joueur = t.players.find(p => p.uid === uid);
   const deja = h.bets[uid] || 0;
@@ -610,7 +657,7 @@ function majActions(t) {
       slider.value = minTo;
       slider.style.display = "";
       br.style.display = "";
-      br.textContent = "Relancer à " + slider.value;
+      br.textContent = "Raise à " + slider.value;
     } else {
       slider.style.display = "none";
       br.style.display = "none";
@@ -622,7 +669,7 @@ function majActions(t) {
   }
 }
 
-$("slider").oninput = () => { $("btnRaise").textContent = "Relancer à " + $("slider").value; };
+$("slider").oninput = () => { $("btnRaise").textContent = "Raise à " + $("slider").value; };
 $("btnFold").onclick = () => jouer("fold");
 $("btnCall").onclick = () => jouer($("btnCall").dataset.type);
 $("btnRaise").onclick = () => jouer("raise", $("slider").value);
@@ -662,34 +709,67 @@ $("btnTable").onclick = async () => {
   } catch (e) { msg("Erreur : " + e.code); }
 };
 
+const CAVE_MIN = 2000;
 async function rejoindre(id, pseudo) {
+  const uid = auth.currentUser.uid;
+  const cave = Math.floor(Number($("cave").value));
+  if (!(cave >= CAVE_MIN)) { msg("La cave minimum est de " + CAVE_MIN + " jetons."); return; }
   try {
-    const u = await getDoc(doc(db, "users", auth.currentUser.uid));
-    const stack = u.exists() ? u.data().chips : 1000;
-    await updateDoc(doc(db, "tables", id), {
-      players: arrayUnion({ uid: auth.currentUser.uid, name: pseudo, stack: stack })
+    await runTransaction(db, async tx => {
+      const uref = doc(db, "users", uid), tref = doc(db, "tables", id);
+      const u = await tx.get(uref), t = await tx.get(tref);
+      const chips = u.exists() ? (u.data().chips || 0) : 0;
+      if (cave > chips) throw new Error("pasassez");
+      const ancien = u.exists() ? u.data().tableId : null;
+      if (ancien && ancien !== id) {
+        const anc = await tx.get(doc(db, "tables", ancien));
+        if (anc.exists() && (anc.data().players || []).some(p => p.uid === uid)) throw new Error("ailleurs");
+      }
+      const td = t.data();
+      const players = td.players || [];
+      if (players.some(p => p.uid === uid)) throw new Error("deja");
+      if (players.length >= td.maxPlayers) throw new Error("pleine");
+      tx.update(uref, { chips: chips - cave, tableId: id });
+      tx.update(tref, { players: [...players, { uid, name: pseudo, stack: cave }] });
     });
     msg("");
     ouvrirTable(id);
-  } catch (e) { msg("Erreur : " + e.code); }
+  } catch (e) {
+    const m = e.message;
+    if (m === "pasassez") msg("Ton compte n'a pas assez de jetons pour cette cave. Demande-en à Mirana.");
+    else if (m === "ailleurs") msg("Tu es déjà assis à une autre table. Quitte-la d'abord.");
+    else if (m === "deja") ouvrirTable(id);
+    else if (m === "pleine") msg("Cette table est pleine.");
+    else msg("Erreur : " + (e.code || m));
+  }
 }
 
 async function quitter(id) {
+  const uid = auth.currentUser.uid;
   try {
-    const ref = doc(db, "tables", id);
-    const snap = await getDoc(ref);
-    const t = snap.data();
-    if (t.hand) { msg("Attends la fin de la main pour quitter la table."); return; }
-    const reste = (t.players || []).filter(p => p.uid !== auth.currentUser.uid);
-    await updateDoc(ref, { players: reste });
+    let rendu = 0;
+    await runTransaction(db, async tx => {
+      const tref = doc(db, "tables", id), uref = doc(db, "users", uid);
+      const t = await tx.get(tref), u = await tx.get(uref);
+      if (!t.exists()) return;
+      const td = t.data();
+      const siege = (td.players || []).find(p => p.uid === uid);
+      if (!siege) return;
+      if (td.hand) throw new Error("main");
+      rendu = siege.stack || 0;
+      tx.update(uref, { chips: (u.exists() ? (u.data().chips || 0) : 0) + rendu, tableId: null });
+      tx.update(tref, { players: td.players.filter(p => p.uid !== uid) });
+    });
+    if (rendu > 0) msg(rendu + " jetons remis sur ton compte.");
     if (tableCourante === id) montrerLobby();
-  } catch (e) { msg("Erreur : " + e.code); }
+  } catch (e) { msg(e.message === "main" ? "Attends la fin de la main pour quitter la table." : "Erreur : " + (e.code || e.message)); }
 }
 
 $("btnRetour").onclick = () => montrerLobby();
 $("btnQuitterTable").onclick = () => { if (tableCourante) quitter(tableCourante); };
 
 function afficherTables(snap, user, pseudo) {
+  dernierTables = snap;
   const liste = $("liste");
   liste.textContent = "";
   if (snap.empty) { liste.textContent = "Aucune table pour l'instant. Crée la première !"; return; }
@@ -724,17 +804,150 @@ function afficherTables(snap, user, pseudo) {
         bouton.disabled = true;
       } else {
         bouton.textContent = "Rejoindre";
-        bouton.onclick = () => rejoindre(d.id, pseudo);
+        bouton.onclick = () => rejoindre(d.id, pseudoCourant);
       }
       carte.append(bouton);
+      if (user.uid === ADMIN_UID) {
+        const obs = document.createElement("button");
+        obs.textContent = "Observer (toutes les cartes)";
+        obs.className = "gris";
+        obs.onclick = () => ouvrirTable(d.id);
+        carte.append(obs);
+      }
     }
     liste.appendChild(carte);
+  });
+}
+
+/* ---------- Pseudo, demandes de jetons, validation par Mirana ---------- */
+const STATUT = { en_attente: ["En attente", "att"], acceptee: ["Acceptée", "ok"], refusee: ["Refusée", "non"], rendu: ["Rendu", "ok"] };
+function quand(d) {
+  const t = d && d.createdAt && d.createdAt.toDate ? d.createdAt.toDate() : null;
+  return t ? t.toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" }) : "à l'instant";
+}
+function ligne(texte, classe, etiquette) {
+  const l = document.createElement("div");
+  l.className = "ligne";
+  const g = document.createElement("span");
+  g.textContent = texte;
+  l.appendChild(g);
+  if (etiquette) { const e = document.createElement("b"); e.className = classe; e.textContent = etiquette; l.appendChild(e); }
+  return l;
+}
+
+$("btnPseudo").onclick = async () => {
+  const nom = $("nouveauPseudo").value.trim().replace(/\s+/g, " ");
+  if (nom.length < 2 || nom.length > 14) { msg("Le pseudo doit avoir entre 2 et 14 caractères."); return; }
+  const uid = auth.currentUser.uid;
+  try {
+    await updateDoc(doc(db, "users", uid), { name: nom });
+    if (dernierTables) {
+      for (const d of dernierTables.docs) {
+        const t = d.data();
+        if (!t.hand && (t.players || []).some(p => p.uid === uid)) {
+          await updateDoc(doc(db, "tables", d.id), { players: t.players.map(p => p.uid === uid ? { ...p, name: nom } : p) });
+        }
+      }
+    }
+    $("nouveauPseudo").value = "";
+    msg("Pseudo changé.");
+  } catch (e) { msg("Erreur : " + (e.code || e.message)); }
+};
+
+$("btnRendre").onclick = async () => {
+  const uid = auth.currentUser.uid;
+  const m = Math.floor(Number($("rendre").value));
+  if (!(m > 0)) { msg("Écris le nombre de jetons à rendre."); return; }
+  try {
+    await runTransaction(db, async tx => {
+      const uref = doc(db, "users", uid);
+      const u = await tx.get(uref);
+      const c = u.exists() ? (u.data().chips || 0) : 0;
+      if (m > c) throw new Error("pasassez");
+      tx.update(uref, { chips: c - m });
+      tx.set(doc(collection(db, "demandes")), { uid, name: pseudoCourant, email: auth.currentUser.email, type: "retour", montant: m, statut: "rendu", createdAt: serverTimestamp() });
+    });
+    $("rendre").value = "";
+    msg(m + " jetons rendus à Mirana.");
+  } catch (e) { msg(e.message === "pasassez" ? "Tu n'as pas assez de jetons sur ton compte." : "Erreur : " + (e.code || e.message)); }
+};
+
+$("btnDemande").onclick = async () => {
+  if (mesDemandes.some(d => d.statut === "en_attente")) { msg("Tu as déjà une demande en attente."); return; }
+  const montant = Number($("montant").value);
+  try {
+    await addDoc(collection(db, "demandes"), {
+      uid: auth.currentUser.uid, name: pseudoCourant, email: auth.currentUser.email,
+      montant, statut: "en_attente", createdAt: serverTimestamp()
+    });
+    msg("Demande envoyée à Mirana.");
+  } catch (e) { msg("Erreur : " + (e.code || e.message)); }
+};
+
+function afficherMesDemandes() {
+  const box = $("mesDemandes");
+  box.textContent = "";
+  mesDemandes.slice(0, 5).forEach(d => {
+    const st = STATUT[d.statut] || ["?", ""];
+    box.appendChild(ligne((d.type === "retour" ? "Rendu à Mirana : " : "Demande : ") + d.montant + " · " + quand(d), st[1], st[0]));
+  });
+}
+
+async function traiter(id, accepter) {
+  try {
+    await runTransaction(db, async tx => {
+      const dref = doc(db, "demandes", id);
+      const d = await tx.get(dref);
+      if (!d.exists() || d.data().statut !== "en_attente") throw new Error("deja");
+      let uref = null, chips = 0;
+      if (accepter) {
+        uref = doc(db, "users", d.data().uid);
+        const u = await tx.get(uref);
+        chips = u.exists() ? (u.data().chips || 0) : 0;
+      }
+      if (accepter) tx.update(uref, { chips: chips + d.data().montant });
+      tx.update(dref, { statut: accepter ? "acceptee" : "refusee", traiteLe: serverTimestamp() });
+    });
+    msg("");
+  } catch (e) { msg(e.message === "deja" ? "Cette demande est déjà traitée." : "Erreur : " + (e.code || e.message)); }
+}
+
+function afficherAdmin(snap) {
+  const att = $("demandesAttente"), his = $("historique");
+  att.textContent = ""; his.textContent = "";
+  const toutes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const enAttente = toutes.filter(d => d.statut === "en_attente");
+  $("nbAttente").textContent = enAttente.length ? "(" + enAttente.length + ")" : "";
+  if (!enAttente.length) att.appendChild(ligne("Aucune demande en attente.", "", ""));
+  enAttente.forEach(d => {
+    const l = ligne((d.name || "?") + " · " + d.montant + " jetons · " + quand(d), "", "");
+    const b = document.createElement("div");
+    b.className = "btns";
+    const ok = document.createElement("button");
+    ok.textContent = "Accepter";
+    ok.onclick = () => traiter(d.id, true);
+    const non = document.createElement("button");
+    non.textContent = "Refuser";
+    non.className = "quitter";
+    non.onclick = () => traiter(d.id, false);
+    b.append(ok, non);
+    l.appendChild(b);
+    att.appendChild(l);
+  });
+  const faites = toutes.filter(d => d.statut !== "en_attente");
+  if (!faites.length) his.appendChild(ligne("Rien pour l'instant.", "", ""));
+  faites.forEach(d => {
+    const st = STATUT[d.statut] || ["?", ""];
+    his.appendChild(ligne((d.name || "?") + (d.type === "retour" ? " a rendu " : " · ") + d.montant + " · " + quand(d), st[1], st[0]));
   });
 }
 
 onAuthStateChanged(auth, async user => {
   if (stopUser) { stopUser(); stopUser = null; }
   if (stopTables) { stopTables(); stopTables = null; }
+  if (stopDem) { stopDem(); stopDem = null; }
+  if (stopAdmin) { stopAdmin(); stopAdmin = null; }
+  mesDemandes = []; dernierTables = null;
   if (stopTable) { stopTable(); stopTable = null; }
   tableCourante = null;
   etat = null;
@@ -745,18 +958,26 @@ onAuthStateChanged(auth, async user => {
   if (!user) return;
 
   const pseudo = user.email.split("@")[0];
+  pseudoCourant = pseudo;
   $("pseudo").textContent = pseudo;
+  $("monUid").textContent = user.uid;
+  $("adminBox").style.display = user.uid === ADMIN_UID ? "block" : "none";
 
   const ref = doc(db, "users", user.uid);
   try {
     const snap = await getDoc(ref);
     if (!snap.exists()) {
-      await setDoc(ref, { email: user.email, name: pseudo, chips: 1000, createdAt: serverTimestamp() });
+      await setDoc(ref, { email: user.email, name: pseudo, chips: 0, createdAt: serverTimestamp() });
     }
   } catch (e) { msg("Erreur : " + e.code); }
 
   stopUser = onSnapshot(ref, s => {
-    if (s.exists()) $("jetons").textContent = "🪙 " + s.data().chips + " jetons";
+    if (s.exists()) {
+      const u = s.data();
+      pseudoCourant = u.name || pseudo;
+      $("pseudo").textContent = pseudoCourant;
+      $("jetons").textContent = "🪙 " + (u.chips || 0) + " jetons";
+    }
   });
 
   stopTables = onSnapshot(
@@ -764,6 +985,24 @@ onAuthStateChanged(auth, async user => {
     snap => afficherTables(snap, user, pseudo),
     e => msg("Erreur : " + e.code)
   );
+
+  stopDem = onSnapshot(
+    query(collection(db, "demandes"), where("uid", "==", user.uid)),
+    snap => {
+      mesDemandes = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => ((b.createdAt && b.createdAt.seconds) || 9e9) - ((a.createdAt && a.createdAt.seconds) || 9e9));
+      afficherMesDemandes();
+    },
+    e => msg("Erreur : " + e.code)
+  );
+
+  if (user.uid === ADMIN_UID) {
+    stopAdmin = onSnapshot(
+      query(collection(db, "demandes"), orderBy("createdAt", "desc"), limit(50)),
+      afficherAdmin,
+      e => msg("Erreur : " + e.code)
+    );
+  }
 });
 </script>
 </body>
