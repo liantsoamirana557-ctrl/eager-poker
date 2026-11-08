@@ -492,11 +492,11 @@ function dessinerTable(t) {
       s.classList.add("vide");
       s.textContent = "🪑 Libre";
     } else {
-      const c'est = p.uid === uid;
-      if (c'est) s.classList.add("moi");
+      const estMoi = p.uid === uid;
+      if (estMoi) s.classList.add("moi");
       if (h && h.turn === p.uid) s.classList.add("tour");
       const nom = document.createElement("b");
-      nom.textContent = c'est ? "Toi" : p.name;
+      nom.textContent = estMoi ? "Toi" : p.name;
       const jetons = document.createElement("div");
       jetons.textContent = typeof p.stack === "number" ? "🪙 " + p.stack : "🪙 —";
       s.append(nom, jetons);
@@ -519,7 +519,7 @@ function dessinerTable(t) {
           mise.textContent = "mise " + h.bets[p.uid];
           s.appendChild(mise);
         }
-        if (!h.folded[p.uid] && !c'est && h.hands && h.hands[p.uid]) {
+        if (!h.folded[p.uid] && !estMoi && h.hands && h.hands[p.uid]) {
           const rg = document.createElement("div");
           rg.className = "rangee";
           if (h.stage === "showdown") h.hands[p.uid].forEach(c => rg.appendChild(carteEl(c, "petit")));
