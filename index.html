@@ -60,6 +60,7 @@
   .ligne{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;padding:6px 0;border-top:1px solid #ffffff22;text-align:left}
   .ligne .btns{display:flex;gap:6px;flex:none}
   .ligne button{width:auto;margin:0;padding:6px 10px;font-size:13px}
+  .chrono{font-size:13px;color:#4cf;font-weight:bold}
   .att{color:#ffd37a}.ok{color:#7fe3a0}.non{color:#ff9a9a}
   #dernier{margin-top:12px;color:#cde;font-size:14px}
 </style>
@@ -100,14 +101,23 @@
 
   <div class="boite" id="adminBox" style="display:none">
     <h3>Mirana : demandes de jetons <span id="nbAttente"></span></h3>
+    <div id="commissions" class="mini"></div>
     <div id="demandesAttente"></div>
     <h3 style="margin-top:12px">Historique</h3>
     <div id="historique"></div>
   </div>
 
-  <h2>Créer une table</h2>
-  <input id="nomTable" type="text" maxlength="30" placeholder="Nom de la table">
-  <button id="btnTable">Créer la table</button>
+  <div class="boite" id="creerBox" style="display:none">
+    <h3>Créer une table</h3>
+    <input id="nomTable" type="text" maxlength="30" placeholder="Nom de la table">
+    <select id="blindeTable">
+      <option value="10">Blinds 10 / 20</option><option value="25">Blinds 25 / 50</option>
+      <option value="50">Blinds 50 / 100</option><option value="100">Blinds 100 / 200</option>
+      <option value="250">Blinds 250 / 500</option><option value="500">Blinds 500 / 1000</option>
+    </select>
+    <input id="caveTable" type="number" min="2000" step="100" value="2000" placeholder="Cave minimum (2000 ou plus)">
+    <button id="btnTable">Créer la table</button>
+  </div>
   <h2>Tables ouvertes</h2>
   <div id="liste"></div>
   <button id="btnSortir" class="quitter">Se déconnecter</button>
@@ -172,7 +182,7 @@ const moi = () => auth.currentUser ? auth.currentUser.uid : null;
 
 const DELAI = 10000;
 const ADMIN_UID = "vIia3H24Mla7zkdEBdUTn0VaIkD3";
-let pseudoCourant = "", dernierTables = null, mesDemandes = [], stopDem = null, stopAdmin = null;
+let pseudoCourant = "", dernierTables = null, mesDemandes = [], stopDem = null, stopAdmin = null, stopCom = null, sansMainDepuis = 0, dernierAuto = 0;
 let tableCourante = null;
 let stopUser = null, stopTables = null, stopTable = null;
 let etat = null;
@@ -265,8 +275,11 @@ function gagnerPot(t, uid, raison) {
   const h = t.hand;
   const pot = sommePot(h);
   const p = t.players.find(x => x.uid === uid);
-  p.stack += pot;
-  t.dernier = p.name + " gagne " + pot + " (" + raison + ")";
+  const commission = Math.floor(pot * 0.10);
+  p.stack += pot - commission;
+  t.commission = commission;
+  t.finAt = Date.now();
+  t.dernier = p.name + " gagne " + (pot - commission) + " (" + raison + "), commission Mirana " + commission;
   t.dealerUid = h.dealer;
   t.pot = 0;
   t.hand = null;
@@ -339,8 +352,12 @@ async function transaction(fn) {
       pot: t.pot || 0,
       hand: t.hand || null,
       dealerUid: t.dealerUid || null,
-      dernier: t.dernier || ""
+      dernier: t.dernier || "",
+      finAt: t.finAt || 0
     });
+    if (t.commission > 0) {
+      tx.set(doc(collection(db, "commissions")), { tableId: tableCourante, montant: t.commission, createdAt: serverTimestamp() });
+    }
   });
 }
 
@@ -355,7 +372,7 @@ function erreurJeu(e) {
   else msg("Erreur : " + (e.code || m));
 }
 
-async function lancerMain() {
+async function lancerMain(silencieux) {
   if (!tableCourante) return;
   try {
     await transaction(t => {
@@ -406,7 +423,10 @@ async function lancerMain() {
       t.pot = sommePot(h);
     });
     msg("");
-  } catch (e) { erreurJeu(e); }
+  } catch (e) {
+    if (silencieux && (e.message === "deja" || e.message === "min2")) return;
+    erreurJeu(e);
+  }
 }
 
 async function jouer(type, montant) {
@@ -425,6 +445,7 @@ async function annulerMain() {
       if (!h) return;
       t.players.forEach(p => { p.stack = (p.stack || 0) + (h.paid[p.uid] || 0); });
       t.dernier = "Main annulée, mises rendues.";
+      t.finAt = Date.now();
       t.dealerUid = h.dealer;
       t.pot = 0;
       t.hand = null;
@@ -454,6 +475,23 @@ async function expirer(turn, deadline) {
   });
 }
 
+function verifierAuto() {
+  const t = etat;
+  if (!t || !tableCourante) return;
+  if (t.hand) { sansMainDepuis = 0; return; }
+  const uid = moi();
+  const elig = (t.players || []).filter(p => p.stack > 0);
+  const rang = elig.findIndex(p => p.uid === uid);
+  if (rang < 0 || elig.length < 2) { sansMainDepuis = 0; return; }
+  if (!sansMainDepuis) sansMainDepuis = Date.now();
+  const depuis = Math.max(sansMainDepuis, t.finAt || 0);
+  const maintenant = Date.now();
+  if (maintenant - depuis > 4000 + rang * 3000 && maintenant - dernierAuto > 3000) {
+    dernierAuto = maintenant;
+    lancerMain(true);
+  }
+}
+
 function verifierChrono() {
   const h = etat && etat.hand;
   if (!h || !h.turn || !h.deadline) return;
@@ -479,6 +517,7 @@ function montrerLobby() {
 
 function ouvrirTable(id) {
   tableCourante = id;
+  sansMainDepuis = 0;
   msg("");
   $("lobby").style.display = "none";
   $("tableView").style.display = "block";
@@ -505,6 +544,9 @@ function majTexte() {
     }
   }
   $("phase").textContent = txt;
+  document.querySelectorAll(".chrono").forEach(el => {
+    el.textContent = "⏱ " + (h && h.deadline ? Math.max(0, Math.ceil((h.deadline - Date.now()) / 1000)) : 0) + " s";
+  });
 }
 
 function dessinerTable(t) {
@@ -544,6 +586,11 @@ function dessinerTable(t) {
       const jetons = document.createElement("div");
       jetons.textContent = typeof p.stack === "number" ? "🪙 " + p.stack : "🪙 —";
       s.append(nom, jetons);
+      if (h && h.turn === p.uid) {
+        const ch = document.createElement("div");
+        ch.className = "chrono";
+        s.appendChild(ch);
+      }
 
       if (h && h.order.includes(p.uid)) {
         const tags = [];
@@ -610,8 +657,9 @@ function dessinerTable(t) {
     cg.style.display = "none";
   }
 
-  $("attente").style.display = (!h && joueurs.length < 2) ? "block" : "none";
-  $("btnLancer").style.display = (!h && joueurs.length >= 2) ? "" : "none";
+  $("attente").textContent = joueurs.length < 2 ? "En attente d'un 2e joueur…" : "La prochaine main démarre toute seule…";
+  $("attente").style.display = !h ? "block" : "none";
+  $("btnLancer").style.display = "none";
   $("btnFin").style.display = (h && h.order.includes(uid)) ? "" : "none";
   $("dernier").textContent = t.dernier ? "Dernière main : " + t.dernier : "";
 
@@ -672,10 +720,10 @@ $("btnFold").onclick = () => jouer("fold");
 $("btnCall").onclick = () => jouer($("btnCall").dataset.type);
 $("btnRaise").onclick = () => jouer("raise", $("slider").value);
 $("btnAllin").onclick = () => jouer("raise", $("btnAllin").dataset.cible);
-$("btnLancer").onclick = lancerMain;
+$("btnLancer").onclick = () => lancerMain(false);
 $("btnFin").onclick = annulerMain;
 
-setInterval(() => { majTexte(); verifierChrono(); }, 500);
+setInterval(() => { majTexte(); verifierChrono(); verifierAuto(); }, 500);
 
 /* ---------- Compte et lobby ---------- */
 $("btnCreer").onclick = async () => {
@@ -691,13 +739,17 @@ $("btnSortir").onclick = () => signOut(auth);
 $("btnTable").onclick = async () => {
   const nom = $("nomTable").value.trim();
   if (!nom) { msg("Donne un nom à la table."); return; }
+  if (auth.currentUser.uid !== ADMIN_UID) { msg("Seule Mirana peut créer une table."); return; }
+  const sb = Number($("blindeTable").value) || 10;
+  const caveMin = Math.max(2000, Math.floor(Number($("caveTable").value) || 2000));
   try {
     await addDoc(collection(db, "tables"), {
       name: nom,
       owner: auth.currentUser.uid,
       maxPlayers: 6,
-      smallBlind: 10,
-      bigBlind: 20,
+      smallBlind: sb,
+      bigBlind: sb * 2,
+      caveMin,
       pot: 0,
       players: [],
       createdAt: serverTimestamp()
@@ -724,6 +776,7 @@ async function rejoindre(id, pseudo) {
         if (anc.exists() && (anc.data().players || []).some(p => p.uid === uid)) throw new Error("ailleurs");
       }
       const td = t.data();
+      if (cave < (td.caveMin || CAVE_MIN)) throw new Error("cavemin:" + (td.caveMin || CAVE_MIN));
       const players = td.players || [];
       if (players.some(p => p.uid === uid)) throw new Error("deja");
       if (players.length >= td.maxPlayers) throw new Error("pleine");
@@ -738,6 +791,7 @@ async function rejoindre(id, pseudo) {
     else if (m === "ailleurs") msg("Tu es déjà assis à une autre table. Quitte-la d'abord.");
     else if (m === "deja") ouvrirTable(id);
     else if (m === "pleine") msg("Cette table est pleine.");
+    else if (m.startsWith("cavemin")) msg("La cave minimum de cette table est de " + m.split(":")[1] + " jetons.");
     else msg("Erreur : " + (e.code || m));
   }
 }
@@ -781,10 +835,27 @@ function afficherTables(snap, user, pseudo) {
     const titre = document.createElement("h3");
     titre.textContent = t.name;
     const info = document.createElement("small");
-    info.textContent = joueurs.length + "/" + t.maxPlayers + " joueurs · blinds " + t.smallBlind + "/" + t.bigBlind + (t.hand ? " · main en cours" : "");
+    info.textContent = joueurs.length + "/" + t.maxPlayers + " joueurs · blinds " + t.smallBlind + "/" + t.bigBlind + " · cave min " + (t.caveMin || 2000) + (t.hand ? " · main en cours" : "");
     const noms = document.createElement("div");
     noms.textContent = joueurs.length ? joueurs.map(p => p.name).join(", ") : "Table vide";
     carte.append(titre, info, noms);
+    if (user.uid === ADMIN_UID) {
+      const lr = document.createElement("div");
+      lr.className = "ligne";
+      const inp = document.createElement("input");
+      inp.type = "text"; inp.maxLength = 30; inp.placeholder = "Nouveau nom";
+      inp.style.margin = "0"; inp.style.maxWidth = "none";
+      const br = document.createElement("button");
+      br.textContent = "Renommer"; br.className = "gris";
+      br.onclick = async () => {
+        const n = inp.value.trim();
+        if (!n) { msg("Écris le nouveau nom."); return; }
+        try { await updateDoc(doc(db, "tables", d.id), { name: n }); msg(""); }
+        catch (e) { msg("Erreur : " + (e.code || e.message)); }
+      };
+      lr.append(inp, br);
+      carte.append(lr);
+    }
 
     if (dedans) {
       const ouvrir = document.createElement("button");
@@ -945,6 +1016,7 @@ onAuthStateChanged(auth, async user => {
   if (stopTables) { stopTables(); stopTables = null; }
   if (stopDem) { stopDem(); stopDem = null; }
   if (stopAdmin) { stopAdmin(); stopAdmin = null; }
+  if (stopCom) { stopCom(); stopCom = null; }
   mesDemandes = []; dernierTables = null;
   if (stopTable) { stopTable(); stopTable = null; }
   tableCourante = null;
@@ -960,6 +1032,7 @@ onAuthStateChanged(auth, async user => {
   $("pseudo").textContent = pseudo;
   $("monUid").textContent = user.uid;
   $("adminBox").style.display = user.uid === ADMIN_UID ? "block" : "none";
+  $("creerBox").style.display = user.uid === ADMIN_UID ? "block" : "none";
 
   const ref = doc(db, "users", user.uid);
   try {
@@ -998,6 +1071,15 @@ onAuthStateChanged(auth, async user => {
     stopAdmin = onSnapshot(
       query(collection(db, "demandes"), orderBy("createdAt", "desc"), limit(50)),
       afficherAdmin,
+      e => msg("Erreur : " + e.code)
+    );
+    stopCom = onSnapshot(
+      query(collection(db, "commissions"), orderBy("createdAt", "desc"), limit(200)),
+      snap => {
+        let total = 0;
+        snap.forEach(d => { total += d.data().montant || 0; });
+        $("commissions").textContent = "Commissions de la table : " + total + " jetons (" + snap.size + " mains)";
+      },
       e => msg("Erreur : " + e.code)
     );
   }
