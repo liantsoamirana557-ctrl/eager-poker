@@ -42,7 +42,7 @@
   .cc.petit{width:22px;height:32px;font-size:10px}
   .cc.grand{width:44px;height:62px;font-size:17px;border-radius:8px}
   .cc.rouge{color:#c0392b}
-  .cc.dos{background:repeating-linear-gradient(45deg,#2c3e90,#2c3e90 4px,#1d2a66 4px,#1d2a66 8px);border:2px solid #fff;color:transparent}
+  .cc.dos{background-color:var(--dos,#2c3e90);background-image:repeating-linear-gradient(45deg,transparent,transparent 4px,#0000004d 4px,#0000004d 8px);border:2px solid #fff;color:transparent}
   .cc.vide-carte{background:transparent;border:2px dashed #7fc}
   #maMainBox{margin:0 auto 10px}
   #actions,#choixGagnant{max-width:300px;margin:0 auto 10px;padding:10px;background:#145a43;border-radius:10px}
@@ -60,6 +60,16 @@
   .ligne{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;padding:6px 0;border-top:1px solid #ffffff22;text-align:left}
   .ligne .btns{display:flex;gap:6px;flex:none}
   .ligne button{width:auto;margin:0;padding:6px 10px;font-size:13px}
+  .onglets{display:flex;gap:8px;max-width:260px;margin:8px auto}
+  .onglets button{margin:0;padding:8px 6px}
+  .ligne input{margin:0;max-width:none;flex:1;width:auto;padding:6px 8px;min-width:0}
+  input[type=color]{height:36px;padding:2px;width:100%;max-width:none}
+  .grille2{display:grid;grid-template-columns:1fr 1fr;gap:6px;max-width:300px;margin:8px auto}
+  .grille2 label{display:flex;flex-direction:column;font-size:12px;color:#cde;gap:2px;text-align:left}
+  .grille2 input{margin:0}
+  #decoCentre{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:70px;opacity:.2;pointer-events:none;border-radius:50%;overflow:hidden}
+  .felt .pot,.felt #phase,.felt .rangee{position:relative;z-index:1}
+  .bandeau{font-size:14px;color:#f4b400;min-height:0}
   .chrono{font-size:13px;color:#4cf;font-weight:bold}
   .att{color:#ffd37a}.ok{color:#7fe3a0}.non{color:#ff9a9a}
   #dernier{margin-top:12px;color:#cde;font-size:14px}
@@ -69,10 +79,20 @@
 <h1>♠ Eager Poker ♥</h1>
 
 <div id="formulaire">
-  <input id="email" type="email" placeholder="E-mail">
-  <input id="mdp" type="password" placeholder="Mot de passe (6 caractères min.)">
-  <button id="btnEntrer">Se connecter</button>
-  <button id="btnCreer">Créer un compte</button>
+  <div class="onglets"><button id="tabMail" class="gris">E-mail</button><button id="tabTel" class="gris">Téléphone</button></div>
+  <div id="boxMail">
+    <input id="email" type="email" placeholder="E-mail">
+    <input id="mdp" type="password" placeholder="Mot de passe (6 caractères min.)">
+    <button id="btnEntrer">Se connecter</button>
+    <button id="btnCreer">Créer un compte</button>
+  </div>
+  <div id="boxTel" style="display:none">
+    <input id="tel" type="tel" placeholder="Numéro (ex : 034 12 345 67)">
+    <button id="btnCode">Recevoir le code par SMS</button>
+    <input id="codeSms" type="text" inputmode="numeric" maxlength="6" placeholder="Code reçu" style="display:none">
+    <button id="btnValider" style="display:none">Valider le code</button>
+  </div>
+  <div id="recaptcha"></div>
 </div>
 
 <div id="lobby" style="display:none">
@@ -83,6 +103,12 @@
     <input id="nouveauPseudo" type="text" maxlength="14" placeholder="Nouveau pseudo (2 à 14 lettres)">
     <button id="btnPseudo" class="gris">Changer mon pseudo</button>
     <span id="monUid" hidden></span>
+    <button id="btnSuppr" class="quitter">Supprimer mon compte</button>
+    <div id="confSuppr" style="display:none">
+      <div class="mini">Tes jetons et tes informations seront effacés.</div>
+      <button id="btnSupprOui" class="quitter">Oui, supprimer</button>
+      <button id="btnSupprNon" class="gris">Annuler</button>
+    </div>
   </div>
 
   <div class="boite">
@@ -105,6 +131,8 @@
     <div id="demandesAttente"></div>
     <h3 style="margin-top:12px">Historique</h3>
     <div id="historique"></div>
+    <h3 style="margin-top:12px">Membres</h3>
+    <div id="membres"></div>
   </div>
 
   <div class="boite" id="creerBox" style="display:none">
@@ -125,8 +153,10 @@
 
 <div id="tableView" style="display:none">
   <h2 id="titreTable"></h2>
+  <div id="bandeauTable" class="bandeau"></div>
   <div class="salle">
     <div class="felt">
+      <div id="decoCentre"></div>
       <div class="pot">Pot : <b id="pot">0</b></div>
       <div id="phase"></div>
       <div class="rangee" id="board"></div>
@@ -149,6 +179,37 @@
 
   <div id="choixGagnant" style="display:none"></div>
 
+  <div class="boite" id="botsBox" style="display:none">
+    <h3>Robots</h3>
+    <div id="listeBots"></div>
+    <input id="nomBot" type="text" maxlength="14" placeholder="Nom du robot">
+    <input id="caveBot" type="number" min="2000" step="100" value="2000" placeholder="Cave du robot">
+    <button id="btnAjoutBot" class="gris">Ajouter un robot</button>
+  </div>
+
+  <div class="boite" id="decoBox" style="display:none">
+    <h3>Décor de la table</h3>
+    <select id="dPreset">
+      <option value="">Style au choix</option>
+      <option value="lamba">Lamba bordeaux et or</option>
+      <option value="roseor">Rose et or</option>
+      <option value="mada">Madagascar</option>
+      <option value="nuit">Nuit</option>
+      <option value="classique">Vert classique</option>
+    </select>
+    <div class="grille2">
+      <label>Tapis<input type="color" id="dFeutre"></label>
+      <label>Bordure<input type="color" id="dBordure"></label>
+      <label>Fond de page<input type="color" id="dFond"></label>
+      <label>Dos des cartes<input type="color" id="dDos"></label>
+    </div>
+    <input id="dCentre" type="text" maxlength="20" placeholder="Texte ou emoji au centre">
+    <input id="dImage" type="text" placeholder="Lien d'une image au centre (https://...)">
+    <input id="dBandeau" type="text" maxlength="60" placeholder="Phrase sous le nom de la table">
+    <button id="btnDeco">Appliquer le décor</button>
+    <button id="btnDecoRaz" class="gris">Remettre le décor d'origine</button>
+  </div>
+
   <div id="attente" style="display:none">En attente d'un 2e joueur…</div>
   <button id="btnLancer" style="display:none">Lancer la main</button>
   <button id="btnFin" class="gris" style="display:none">Annuler la main (rembourse les mises)</button>
@@ -161,8 +222,8 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, addDoc, query, orderBy, updateDoc, arrayUnion, serverTimestamp, runTransaction, where, limit } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, RecaptchaVerifier, signInWithPhoneNumber, deleteUser } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, addDoc, query, orderBy, updateDoc, arrayUnion, serverTimestamp, runTransaction, where, limit, deleteDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDXyNNGTWwifena8SSHqvwqyAno0S9vRAM",
@@ -182,7 +243,7 @@ const moi = () => auth.currentUser ? auth.currentUser.uid : null;
 
 const DELAI = 10000;
 const ADMIN_UID = "vIia3H24Mla7zkdEBdUTn0VaIkD3";
-let pseudoCourant = "", dernierTables = null, mesDemandes = [], stopDem = null, stopAdmin = null, stopCom = null, sansMainDepuis = 0, dernierAuto = 0;
+let pseudoCourant = "", dernierTables = null, mesDemandes = [], stopDem = null, stopAdmin = null, stopCom = null, sansMainDepuis = 0, dernierAuto = 0, abattageDepuis = 0, dernierAbattage = 0, botCle = "", botVuA = 0, botEnvoye = "", botsSig = "", profilOk = false, rappelFait = false, stopMem = [];
 let tableCourante = null;
 let stopUser = null, stopTables = null, stopTable = null;
 let etat = null;
@@ -379,14 +440,14 @@ async function lancerMain(silencieux) {
       if (t.hand) throw new Error("deja");
       const players = t.players.map(p => ({ ...p }));
       players.forEach(p => { if (typeof p.stack !== "number") p.stack = 1000; });
-      const elig = players.filter(p => p.stack > 0);
+      const elig = players.filter(p => p.stack > 0 && p.actif !== false);
       if (elig.length < 2) throw new Error("min2");
 
       let dealerUid = null;
       const start = players.findIndex(p => p.uid === t.dealerUid);
       for (let k = 1; k <= players.length; k++) {
         const p = players[(start + k) % players.length];
-        if (p.stack > 0) { dealerUid = p.uid; break; }
+        if (p.stack > 0 && p.actif !== false) { dealerUid = p.uid; break; }
       }
       const di = elig.findIndex(p => p.uid === dealerUid);
       const order = [...elig.slice(di), ...elig.slice(0, di)].map(p => p.uid);
@@ -475,13 +536,356 @@ async function expirer(turn, deadline) {
   });
 }
 
+/* ---------- Évaluation des mains, robots, abattage automatique ---------- */
+const RNOM = { 14: "As", 13: "Roi", 12: "Dame", 11: "Valet", 10: "10", 9: "9", 8: "8", 7: "7", 6: "6", 5: "5", 4: "4", 3: "3", 2: "2" };
+const RPLUR = { 14: "As", 13: "Rois", 12: "Dames", 11: "Valets" };
+const plur = r => RPLUR[r] || String(r);
+const deR = r => (r === 14 ? "d'As" : "de " + plur(r));
+function parseCarte(c) {
+  const rr = c.slice(0, -1);
+  return { r: { J: 11, Q: 12, K: 13, A: 14 }[rr] || Number(rr), s: COULEURS.indexOf(c.slice(-1)) };
+}
+function eval5(c) {
+  const rs = c.map(x => x.r).sort((a, b) => b - a);
+  const flush = c.every(x => x.s === c[0].s);
+  const uniq = Array.from(new Set(rs));
+  let sh = 0;
+  if (uniq.length === 5) {
+    if (uniq[0] - uniq[4] === 4) sh = uniq[0];
+    else if (uniq[0] === 14 && uniq[1] === 5) sh = 5;
+  }
+  const cnt = {};
+  rs.forEach(r => { cnt[r] = (cnt[r] || 0) + 1; });
+  const gr = Object.keys(cnt).map(Number).sort((a, b) => cnt[b] - cnt[a] || b - a);
+  const k = gr.map(r => cnt[r]);
+  if (sh && flush) return [8, sh];
+  if (k[0] === 4) return [7, gr[0], gr[1]];
+  if (k[0] === 3 && k[1] === 2) return [6, gr[0], gr[1]];
+  if (flush) return [5].concat(rs);
+  if (sh) return [4, sh];
+  if (k[0] === 3) return [3, gr[0], gr[1], gr[2]];
+  if (k[0] === 2 && k[1] === 2) return [2, gr[0], gr[1], gr[2]];
+  if (k[0] === 2) return [1, gr[0], gr[1], gr[2], gr[3]];
+  return [0].concat(rs);
+}
+function cmpScore(a, b) {
+  const n = Math.max(a.length, b.length);
+  for (let i = 0; i < n; i++) { const d = (a[i] || 0) - (b[i] || 0); if (d) return d; }
+  return 0;
+}
+function best7(cards) {
+  let best = null;
+  const n = cards.length;
+  (function rec(start, pick) {
+    if (pick.length === 5) {
+      const sc = eval5(pick.map(i => cards[i]));
+      if (!best || cmpScore(sc, best) > 0) best = sc;
+      return;
+    }
+    for (let i = start; i < n; i++) { pick.push(i); rec(i + 1, pick); pick.pop(); }
+  })(0, []);
+  return best;
+}
+function descMain(sc) {
+  switch (sc[0]) {
+    case 0: return "Carte haute " + RNOM[sc[1]];
+    case 1: return "Paire " + deR(sc[1]);
+    case 2: return "Double paire " + plur(sc[1]) + " et " + plur(sc[2]);
+    case 3: return "Brelan " + deR(sc[1]);
+    case 4: return "Suite, " + RNOM[sc[1]] + " haut";
+    case 5: return "Couleur, " + RNOM[sc[1]] + " haut";
+    case 6: return "Full " + plur(sc[1]) + " et " + plur(sc[2]);
+    case 7: return "Carré " + deR(sc[1]);
+    default: return sc[1] === 14 ? "Quinte flush royale" : "Quinte flush, " + RNOM[sc[1]] + " haut";
+  }
+}
+function force(hole, board) {
+  if (board.length === 0) {
+    const a = Math.max(hole[0].r, hole[1].r), b = Math.min(hole[0].r, hole[1].r);
+    const pts = r => (r === 14 ? 10 : r === 13 ? 8 : r === 12 ? 7 : r === 11 ? 6 : r / 2);
+    let sc = pts(a);
+    if (a === b) sc = Math.max(5, sc * 2);
+    if (hole[0].s === hole[1].s) sc += 2;
+    const gap = a - b - 1;
+    if (a !== b) sc -= gap === 0 ? 0 : gap === 1 ? 1 : gap === 2 ? 2 : gap === 3 ? 4 : 5;
+    if (a !== b && gap <= 1 && a < 12) sc += 1;
+    return Math.max(0, Math.min(1, sc / 20));
+  }
+  const all = hole.concat(board);
+  const sc = best7(all);
+  const cat = sc[0];
+  let v = [0.1, 0.42, 0.68, 0.78, 0.86, 0.9, 0.95, 0.98, 1][cat];
+  if (cat === 0) v = 0.08 + (sc[1] - 2) / 12 * 0.12;
+  if (cat === 1) {
+    const top = Math.max.apply(null, board.map(c => c.r));
+    if (!hole.some(c => c.r === sc[1])) v = 0.2;
+    else v = 0.34 + (sc[1] >= top ? 0.16 : 0) + (sc[1] - 2) / 12 * 0.1;
+  }
+  if (board.length < 5) {
+    const bs = [0, 0, 0, 0];
+    all.forEach(c => { bs[c.s]++; });
+    for (let q = 0; q < 4; q++) if (bs[q] >= 4 && hole.some(c => c.s === q)) v = Math.max(v, 0.5);
+  }
+  return v;
+}
+function decisionBot(t, uid) {
+  const h = t.hand;
+  const p = t.players.find(x => x.uid === uid);
+  const hole = h.hands[uid].map(parseCarte), board = h.board.map(parseCarte);
+  const deja = h.bets[uid] || 0;
+  const aPayer = h.currentBet - deja;
+  const cap = deja + p.stack;
+  const minTo = Math.min(h.currentBet + h.minRaise, cap);
+  const pot = sommePot(h);
+  const bb = t.bigBlind;
+  const f = force(hole, board);
+  const e = f + (Math.random() - 0.5) * 0.2;
+  const potOdds = aPayer / (pot + aPayer || 1);
+  const rt = fr => {
+    const add = Math.max(h.minRaise, Math.round(fr * (pot + aPayer) / bb) * bb);
+    return Math.min(Math.max(h.currentBet + add, minTo), cap);
+  };
+  const peutRelancer = cap > h.currentBet;
+  if (aPayer === 0) {
+    if (peutRelancer && e > 0.6) return { type: "raise", to: rt(0.5 + Math.random() * 0.4) };
+    return { type: "check" };
+  }
+  if (peutRelancer && e > 0.82) {
+    if (e > 0.93 && Math.random() < 0.35) return { type: "raise", to: cap };
+    return { type: "raise", to: rt(0.7 + Math.random() * 0.6) };
+  }
+  if (aPayer >= p.stack) return { type: e > 0.6 ? "call" : "fold" };
+  if (e > potOdds + 0.15) return { type: "call" };
+  if (aPayer <= bb && f > 0.2 && Math.random() < 0.5) return { type: "call" };
+  return { type: "fold" };
+}
+async function jouerBot(turn, deadline) {
+  await transaction(t => {
+    const h = t.hand;
+    if (!h || h.turn !== turn || h.deadline !== deadline) throw new Error("obsolete");
+    const a = decisionBot(t, turn);
+    appliquerAction(t, turn, a.type, a.to);
+  });
+}
+function verifierBots() {
+  if (moi() !== ADMIN_UID || !etat || !etat.hand) return;
+  const h = etat.hand;
+  if (!h.turn) return;
+  const p = (etat.players || []).find(x => x.uid === h.turn);
+  if (!p || !p.bot) return;
+  const cle = h.turn + "|" + h.deadline;
+  if (botCle !== cle) { botCle = cle; botVuA = Date.now(); return; }
+  if (Date.now() - botVuA > 1500 && botEnvoye !== cle) {
+    botEnvoye = cle;
+    jouerBot(h.turn, h.deadline).catch(e => { if (e.message !== "obsolete") botEnvoye = ""; });
+  }
+}
+function attribuerAuto(t) {
+  const h = t.hand;
+  const live = h.order.filter(u => !h.folded[u]);
+  const score = {};
+  live.forEach(u => { score[u] = best7(h.hands[u].concat(h.board).map(parseCarte)); });
+  const paid = h.paid || {};
+  const niveaux = Array.from(new Set(h.order.map(u => paid[u] || 0).filter(x => x > 0))).sort((a, b) => a - b);
+  const gains = {};
+  let commission = 0, prev = 0;
+  niveaux.forEach(lv => {
+    let montant = 0;
+    h.order.forEach(u => { const pu = paid[u] || 0; montant += Math.max(0, Math.min(pu, lv) - Math.min(pu, prev)); });
+    prev = lv;
+    let elig = live.filter(u => (paid[u] || 0) >= lv);
+    if (!elig.length) elig = live;
+    let meilleur = null;
+    elig.forEach(u => { if (!meilleur || cmpScore(score[u], meilleur) > 0) meilleur = score[u]; });
+    const gagnants = elig.filter(u => cmpScore(score[u], meilleur) === 0);
+    const com = Math.floor(montant * 0.10);
+    commission += com;
+    const net = montant - com;
+    const part = Math.floor(net / gagnants.length);
+    let reste = net - part * gagnants.length;
+    gagnants.forEach(u => { gains[u] = (gains[u] || 0) + part + (reste-- > 0 ? 1 : 0); });
+  });
+  const lignes = [];
+  Object.keys(gains).forEach(u => {
+    const p = t.players.find(x => x.uid === u);
+    if (p) { p.stack += gains[u]; lignes.push(p.name + " gagne " + gains[u] + " (" + descMain(score[u]) + ")"); }
+  });
+  t.commission = commission;
+  t.finAt = Date.now();
+  t.dernier = lignes.join(" · ") + " · commission Mirana " + commission;
+  t.dealerUid = h.dealer;
+  t.pot = 0;
+  t.hand = null;
+}
+async function resoudreAbattage() {
+  if (!tableCourante) return;
+  try {
+    await transaction(t => {
+      if (!t.hand || t.hand.stage !== "showdown") throw new Error("obsolete");
+      attribuerAuto(t);
+    });
+  } catch (e) { erreurJeu(e); }
+}
+
+/* ---------- Robots gérés par Mirana ---------- */
+async function modifierTable(fn) {
+  if (moi() !== ADMIN_UID || !tableCourante) return;
+  try {
+    await runTransaction(db, async tx => {
+      const ref = doc(db, "tables", tableCourante);
+      const snap = await tx.get(ref);
+      const t = snap.data();
+      t.players = (t.players || []).map(p => ({ ...p }));
+      fn(t);
+      tx.update(ref, { players: t.players });
+    });
+    msg("");
+  } catch (e) {
+    msg(e.message === "main" ? "Attends la fin de la main." : e.message === "pleine" ? "La table est pleine." : "Erreur : " + (e.code || e.message));
+  }
+}
+$("btnAjoutBot").onclick = () => {
+  const nom = $("nomBot").value.trim().slice(0, 14);
+  const cave = Math.floor(Number($("caveBot").value) || 2000);
+  modifierTable(t => {
+    if (t.players.length >= t.maxPlayers) throw new Error("pleine");
+    const n = t.players.filter(p => p.bot).length + 1;
+    t.players.push({ uid: "bot_" + Date.now().toString(36) + Math.floor(Math.random() * 1000), name: nom || "Robot " + n, stack: Math.max(t.caveMin || 2000, cave), bot: true, actif: true });
+  });
+  $("nomBot").value = "";
+};
+function afficherBots(t) {
+  const box = $("botsBox");
+  if (moi() !== ADMIN_UID) { box.style.display = "none"; return; }
+  box.style.display = "block";
+  const bots = (t.players || []).filter(p => p.bot);
+  const sig = tableCourante + "|" + bots.map(b => b.uid + b.name + (b.actif === false ? "0" : "1")).join(",");
+  if (sig === botsSig) return;
+  botsSig = sig;
+  const l = $("listeBots");
+  l.textContent = "";
+  bots.forEach(b => {
+    const l1 = document.createElement("div");
+    l1.className = "ligne";
+    const nom = document.createElement("span");
+    nom.textContent = "🤖 " + b.name + (b.actif === false ? " (repos)" : "");
+    const btns = document.createElement("div");
+    btns.className = "btns";
+    const bj = document.createElement("button");
+    bj.textContent = b.actif === false ? "Jouer" : "Repos";
+    bj.className = "gris";
+    bj.onclick = () => modifierTable(x => { const q = x.players.find(p => p.uid === b.uid); if (q) q.actif = (q.actif === false); });
+    const br = document.createElement("button");
+    br.textContent = "Retirer";
+    br.className = "quitter";
+    br.onclick = () => modifierTable(x => { if (x.hand) throw new Error("main"); x.players = x.players.filter(p => p.uid !== b.uid); });
+    btns.append(bj, br);
+    l1.append(nom, btns);
+    l.appendChild(l1);
+    const l2 = document.createElement("div");
+    l2.className = "ligne";
+    const inp = document.createElement("input");
+    inp.type = "text"; inp.maxLength = 14; inp.placeholder = "Nouveau nom";
+    const rn = document.createElement("button");
+    rn.textContent = "Renommer";
+    rn.className = "gris";
+    rn.onclick = () => {
+      const n = inp.value.trim().slice(0, 14);
+      if (!n) { msg("Écris le nouveau nom."); return; }
+      modifierTable(x => { const q = x.players.find(p => p.uid === b.uid); if (q) q.name = n; });
+    };
+    l2.append(inp, rn);
+    l.appendChild(l2);
+  });
+}
+
+/* ---------- Décor des tables (réservé à Mirana) ---------- */
+const PRESETS = {
+  lamba: { feutre: "#5a1a3a", bordure: "#e0b04e", fond: "#2a0a1c", dos: "#7a1f4a" },
+  roseor: { feutre: "#a8456b", bordure: "#f0c36a", fond: "#3a1226", dos: "#b03a60" },
+  mada: { feutre: "#007e3a", bordure: "#fc3d32", fond: "#14281b", dos: "#fc3d32" },
+  nuit: { feutre: "#16213e", bordure: "#c9a227", fond: "#0b0f1e", dos: "#6b2d5c" },
+  classique: { feutre: "#1b7a4f", bordure: "#5a3a1a", fond: "#0b3d2e", dos: "#2c3e90" }
+};
+let decoSig = "";
+function couleurOk(c) { return typeof c === "string" && /^#[0-9a-fA-F]{6}$/.test(c); }
+function appliquerDeco(d) {
+  d = d || {};
+  const felt = document.querySelector(".felt");
+  felt.style.background = couleurOk(d.feutre) ? d.feutre : "";
+  felt.style.borderColor = couleurOk(d.bordure) ? d.bordure : "";
+  document.body.style.background = couleurOk(d.fond) ? d.fond : "";
+  document.documentElement.style.setProperty("--dos", couleurOk(d.dos) ? d.dos : "#2c3e90");
+  const c = $("decoCentre");
+  c.textContent = "";
+  if (typeof d.image === "string" && /^https:\/\//.test(d.image)) {
+    const im = document.createElement("img");
+    im.src = d.image; im.alt = "";
+    im.style.maxWidth = "60%"; im.style.maxHeight = "60%";
+    c.appendChild(im);
+  } else if (d.centre) c.textContent = String(d.centre).slice(0, 20);
+  $("bandeauTable").textContent = d.bandeau ? String(d.bandeau).slice(0, 60) : "";
+}
+function afficherDeco(t) {
+  const box = $("decoBox");
+  if (moi() !== ADMIN_UID) { box.style.display = "none"; return; }
+  box.style.display = "block";
+  const sig = tableCourante + "|" + JSON.stringify(t.deco || {});
+  if (sig === decoSig) return;
+  decoSig = sig;
+  const d = t.deco || {};
+  $("dFeutre").value = couleurOk(d.feutre) ? d.feutre : "#1b7a4f";
+  $("dBordure").value = couleurOk(d.bordure) ? d.bordure : "#5a3a1a";
+  $("dFond").value = couleurOk(d.fond) ? d.fond : "#0b3d2e";
+  $("dDos").value = couleurOk(d.dos) ? d.dos : "#2c3e90";
+  $("dCentre").value = d.centre || "";
+  $("dImage").value = d.image || "";
+  $("dBandeau").value = d.bandeau || "";
+}
+$("dPreset").onchange = () => {
+  const p = PRESETS[$("dPreset").value];
+  if (!p) return;
+  $("dFeutre").value = p.feutre; $("dBordure").value = p.bordure; $("dFond").value = p.fond; $("dDos").value = p.dos;
+};
+$("btnDeco").onclick = async () => {
+  if (moi() !== ADMIN_UID || !tableCourante) return;
+  const img = $("dImage").value.trim();
+  if (img && !/^https:\/\//.test(img)) { msg("Le lien de l'image doit commencer par https://"); return; }
+  const deco = {
+    feutre: $("dFeutre").value, bordure: $("dBordure").value, fond: $("dFond").value, dos: $("dDos").value,
+    centre: $("dCentre").value.trim().slice(0, 20), image: img, bandeau: $("dBandeau").value.trim().slice(0, 60)
+  };
+  try { await updateDoc(doc(db, "tables", tableCourante), { deco }); msg("Décor appliqué."); }
+  catch (e) { msg("Erreur : " + (e.code || e.message)); }
+};
+$("btnDecoRaz").onclick = async () => {
+  if (moi() !== ADMIN_UID || !tableCourante) return;
+  try { await updateDoc(doc(db, "tables", tableCourante), { deco: null }); msg("Décor d'origine remis."); }
+  catch (e) { msg("Erreur : " + (e.code || e.message)); }
+};
+
 function verifierAuto() {
   const t = etat;
   if (!t || !tableCourante) return;
-  if (t.hand) { sansMainDepuis = 0; return; }
   const uid = moi();
-  const elig = (t.players || []).filter(p => p.stack > 0);
-  const rang = elig.findIndex(p => p.uid === uid);
+  const elig = (t.players || []).filter(p => p.stack > 0 && p.actif !== false);
+  let rang = elig.findIndex(p => p.uid === uid);
+  if (rang < 0 && uid === ADMIN_UID) rang = elig.length;
+  if (t.hand) {
+    sansMainDepuis = 0;
+    const h = t.hand;
+    if (h.stage === "showdown" && (h.order.includes(uid) || uid === ADMIN_UID)) {
+      if (!abattageDepuis) abattageDepuis = Date.now();
+      const r = Math.max(0, h.order.indexOf(uid));
+      const maintenant = Date.now();
+      if (maintenant - abattageDepuis > 3000 + r * 2000 && maintenant - dernierAbattage > 3000) {
+        dernierAbattage = maintenant;
+        resoudreAbattage();
+      }
+    } else abattageDepuis = 0;
+    return;
+  }
+  abattageDepuis = 0;
   if (rang < 0 || elig.length < 2) { sansMainDepuis = 0; return; }
   if (!sansMainDepuis) sansMainDepuis = Date.now();
   const depuis = Math.max(sansMainDepuis, t.finAt || 0);
@@ -508,6 +912,7 @@ function verifierChrono() {
 
 /* ---------- Navigation ---------- */
 function montrerLobby() {
+  appliquerDeco(null);
   if (stopTable) { stopTable(); stopTable = null; }
   tableCourante = null;
   etat = null;
@@ -582,7 +987,7 @@ function dessinerTable(t) {
       if (estMoi) s.classList.add("moi");
       if (h && h.turn === p.uid) s.classList.add("tour");
       const nom = document.createElement("b");
-      nom.textContent = estMoi ? "Toi" : p.name;
+      nom.textContent = estMoi ? "Toi" : (p.bot ? "🤖 " : "") + p.name + (p.actif === false ? " (repos)" : "");
       const jetons = document.createElement("div");
       jetons.textContent = typeof p.stack === "number" ? "🪙 " + p.stack : "🪙 —";
       s.append(nom, jetons);
@@ -640,7 +1045,7 @@ function dessinerTable(t) {
 
   const cg = $("choixGagnant");
   cg.textContent = "";
-  if (h && h.stage === "showdown" && h.order.includes(uid)) {
+  if (false) {
     const titre = document.createElement("div");
     titre.textContent = "Abattage : qui gagne le pot de " + (t.pot || 0) + " ? (test, calcul automatique à l'étape 4)";
     cg.appendChild(titre);
@@ -664,6 +1069,9 @@ function dessinerTable(t) {
   $("dernier").textContent = t.dernier ? "Dernière main : " + t.dernier : "";
 
   majActions(t);
+  afficherBots(t);
+  afficherDeco(t);
+  appliquerDeco(t.deco);
 }
 
 function majActions(t) {
@@ -723,7 +1131,7 @@ $("btnAllin").onclick = () => jouer("raise", $("btnAllin").dataset.cible);
 $("btnLancer").onclick = () => lancerMain(false);
 $("btnFin").onclick = annulerMain;
 
-setInterval(() => { majTexte(); verifierChrono(); verifierAuto(); }, 500);
+setInterval(() => { majTexte(); verifierChrono(); verifierAuto(); verifierBots(); }, 500);
 
 /* ---------- Compte et lobby ---------- */
 $("btnCreer").onclick = async () => {
@@ -735,6 +1143,48 @@ $("btnEntrer").onclick = async () => {
   catch (e) { msg("Erreur : " + e.code); }
 };
 $("btnSortir").onclick = () => signOut(auth);
+
+let confirmation = null, verifier = null;
+function texteErreurAuth(e) {
+  const c = e.code || "";
+  if (c === "auth/billing-not-enabled") return "Les SMS ne sont pas encore activés sur ce site.";
+  if (c === "auth/invalid-phone-number") return "Numéro invalide.";
+  if (c === "auth/too-many-requests") return "Trop d'essais. Réessaie plus tard.";
+  if (c === "auth/invalid-verification-code") return "Code incorrect.";
+  if (c === "auth/code-expired") return "Code expiré. Demande un nouveau code.";
+  if (c === "auth/operation-not-allowed") return "La connexion par téléphone n'est pas activée.";
+  if (c === "auth/unauthorized-domain") return "Ce site n'est pas autorisé dans Firebase.";
+  return "Erreur : " + (c || e.message);
+}
+function normaliserTel(n) {
+  n = n.replace(/[\s.\-()]/g, "");
+  if (n.startsWith("00")) n = "+" + n.slice(2);
+  else if (n.startsWith("0")) n = "+261" + n.slice(1);
+  else if (!n.startsWith("+")) n = "+" + n;
+  return n;
+}
+$("tabMail").onclick = () => { $("boxMail").style.display = "block"; $("boxTel").style.display = "none"; msg(""); };
+$("tabTel").onclick = () => { $("boxMail").style.display = "none"; $("boxTel").style.display = "block"; msg(""); };
+$("btnCode").onclick = async () => {
+  const num = normaliserTel($("tel").value);
+  if (!/^\+\d{9,15}$/.test(num)) { msg("Numéro invalide."); return; }
+  try {
+    if (!verifier) verifier = new RecaptchaVerifier(auth, "recaptcha", { size: "invisible" });
+    confirmation = await signInWithPhoneNumber(auth, num, verifier);
+    $("codeSms").style.display = "";
+    $("btnValider").style.display = "";
+    msg("Code envoyé par SMS.");
+  } catch (e) {
+    msg(texteErreurAuth(e));
+    try { if (verifier) verifier.clear(); } catch (_) {}
+    verifier = null;
+  }
+};
+$("btnValider").onclick = async () => {
+  if (!confirmation) { msg("Demande d'abord un code."); return; }
+  try { await confirmation.confirm($("codeSms").value.trim()); msg(""); }
+  catch (e) { msg(texteErreurAuth(e)); }
+};
 
 $("btnTable").onclick = async () => {
   const nom = $("nomTable").value.trim();
@@ -763,6 +1213,7 @@ const CAVE_MIN = 2000;
 async function rejoindre(id, pseudo) {
   const uid = auth.currentUser.uid;
   const cave = Math.floor(Number($("cave").value));
+  if (!profilOk) { msg("Choisis d'abord ton pseudo dans Mon profil."); return; }
   if (!(cave >= CAVE_MIN)) { msg("La cave minimum est de " + CAVE_MIN + " jetons."); return; }
   try {
     await runTransaction(db, async tx => {
@@ -839,6 +1290,7 @@ function afficherTables(snap, user, pseudo) {
     const noms = document.createElement("div");
     noms.textContent = joueurs.length ? joueurs.map(p => p.name).join(", ") : "Table vide";
     carte.append(titre, info, noms);
+    if (couleurOk(t.deco && t.deco.feutre)) carte.style.background = t.deco.feutre;
     if (user.uid === ADMIN_UID) {
       const lr = document.createElement("div");
       lr.className = "ligne";
@@ -909,7 +1361,7 @@ $("btnPseudo").onclick = async () => {
   if (nom.length < 2 || nom.length > 14) { msg("Le pseudo doit avoir entre 2 et 14 caractères."); return; }
   const uid = auth.currentUser.uid;
   try {
-    await updateDoc(doc(db, "users", uid), { name: nom });
+    await updateDoc(doc(db, "users", uid), { name: nom, pseudoOk: true });
     if (dernierTables) {
       for (const d of dernierTables.docs) {
         const t = d.data();
@@ -934,11 +1386,35 @@ $("btnRendre").onclick = async () => {
       const c = u.exists() ? (u.data().chips || 0) : 0;
       if (m > c) throw new Error("pasassez");
       tx.update(uref, { chips: c - m });
-      tx.set(doc(collection(db, "demandes")), { uid, name: pseudoCourant, email: auth.currentUser.email, type: "retour", montant: m, statut: "rendu", createdAt: serverTimestamp() });
+      tx.set(doc(collection(db, "demandes")), { uid, name: pseudoCourant, contact: auth.currentUser.email || auth.currentUser.phoneNumber || "", type: "retour", montant: m, statut: "rendu", createdAt: serverTimestamp() });
     });
     $("rendre").value = "";
     msg(m + " jetons rendus à Mirana.");
   } catch (e) { msg(e.message === "pasassez" ? "Tu n'as pas assez de jetons sur ton compte." : "Erreur : " + (e.code || e.message)); }
+};
+
+$("btnSuppr").onclick = () => { $("confSuppr").style.display = "block"; $("btnSuppr").style.display = "none"; };
+$("btnSupprNon").onclick = () => { $("confSuppr").style.display = "none"; $("btnSuppr").style.display = ""; };
+$("btnSupprOui").onclick = async () => {
+  const user = auth.currentUser;
+  if (!user) return;
+  const uid = user.uid;
+  const derniere = new Date(user.metadata.lastSignInTime).getTime();
+  if (Date.now() - derniere > 4 * 60 * 1000) { msg("Par sécurité, déconnecte-toi, reconnecte-toi, puis supprime ton compte tout de suite."); return; }
+  try {
+    const u = await getDoc(doc(db, "users", uid));
+    const tid = u.exists() ? u.data().tableId : null;
+    if (tid) {
+      const t = await getDoc(doc(db, "tables", tid));
+      if (t.exists() && (t.data().players || []).some(p => p.uid === uid)) { msg("Quitte ta table avant de supprimer ton compte."); return; }
+    }
+    const dem = await getDocs(query(collection(db, "demandes"), where("uid", "==", uid)));
+    for (const d of dem.docs) await deleteDoc(d.ref);
+    await deleteDoc(doc(db, "membres", uid));
+    await deleteDoc(doc(db, "users", uid));
+    await deleteUser(user);
+    msg("Ton compte est supprimé.");
+  } catch (e) { msg(e.code === "auth/requires-recent-login" ? "Reconnecte-toi, puis réessaie tout de suite." : "Erreur : " + (e.code || e.message)); }
 };
 
 $("btnDemande").onclick = async () => {
@@ -946,7 +1422,7 @@ $("btnDemande").onclick = async () => {
   const montant = Number($("montant").value);
   try {
     await addDoc(collection(db, "demandes"), {
-      uid: auth.currentUser.uid, name: pseudoCourant, email: auth.currentUser.email,
+      uid: auth.currentUser.uid, name: pseudoCourant, contact: auth.currentUser.email || auth.currentUser.phoneNumber || "",
       montant, statut: "en_attente", createdAt: serverTimestamp()
     });
     msg("Demande envoyée à Mirana.");
@@ -981,6 +1457,11 @@ async function traiter(id, accepter) {
   } catch (e) { msg(e.message === "deja" ? "Cette demande est déjà traitée." : "Erreur : " + (e.code || e.message)); }
 }
 
+function qui(d) {
+  const c = d.contact || d.email || "";
+  return (d.name || "?") + (c ? " (" + c + ")" : "");
+}
+
 function afficherAdmin(snap) {
   const att = $("demandesAttente"), his = $("historique");
   att.textContent = ""; his.textContent = "";
@@ -989,7 +1470,7 @@ function afficherAdmin(snap) {
   $("nbAttente").textContent = enAttente.length ? "(" + enAttente.length + ")" : "";
   if (!enAttente.length) att.appendChild(ligne("Aucune demande en attente.", "", ""));
   enAttente.forEach(d => {
-    const l = ligne((d.name || "?") + " · " + d.montant + " jetons · " + quand(d), "", "");
+    const l = ligne(qui(d) + " · " + d.montant + " jetons · " + quand(d), "", "");
     const b = document.createElement("div");
     b.className = "btns";
     const ok = document.createElement("button");
@@ -1007,7 +1488,7 @@ function afficherAdmin(snap) {
   if (!faites.length) his.appendChild(ligne("Rien pour l'instant.", "", ""));
   faites.forEach(d => {
     const st = STATUT[d.statut] || ["?", ""];
-    his.appendChild(ligne((d.name || "?") + (d.type === "retour" ? " a rendu " : " · ") + d.montant + " · " + quand(d), st[1], st[0]));
+    his.appendChild(ligne(qui(d) + (d.type === "retour" ? " a rendu " : " · ") + d.montant + " · " + quand(d), st[1], st[0]));
   });
 }
 
@@ -1017,6 +1498,7 @@ onAuthStateChanged(auth, async user => {
   if (stopDem) { stopDem(); stopDem = null; }
   if (stopAdmin) { stopAdmin(); stopAdmin = null; }
   if (stopCom) { stopCom(); stopCom = null; }
+  stopMem.forEach(f => f()); stopMem = []; rappelFait = false;
   mesDemandes = []; dernierTables = null;
   if (stopTable) { stopTable(); stopTable = null; }
   tableCourante = null;
@@ -1027,7 +1509,7 @@ onAuthStateChanged(auth, async user => {
   $("lobby").style.display = user ? "block" : "none";
   if (!user) return;
 
-  const pseudo = user.email.split("@")[0];
+  const pseudo = "joueur" + Math.floor(1000 + Math.random() * 9000);
   pseudoCourant = pseudo;
   $("pseudo").textContent = pseudo;
   $("monUid").textContent = user.uid;
@@ -1038,14 +1520,20 @@ onAuthStateChanged(auth, async user => {
   try {
     const snap = await getDoc(ref);
     if (!snap.exists()) {
-      await setDoc(ref, { email: user.email, name: pseudo, chips: 0, createdAt: serverTimestamp() });
+      await setDoc(ref, { name: pseudo, chips: 0, pseudoOk: false, createdAt: serverTimestamp() });
     }
   } catch (e) { msg("Erreur : " + e.code); }
+
+  try {
+    await setDoc(doc(db, "membres", user.uid), { contact: user.email || user.phoneNumber || "", derniereConnexion: serverTimestamp() }, { merge: true });
+  } catch (e) { /* le profil privé se remplira à la prochaine connexion */ }
 
   stopUser = onSnapshot(ref, s => {
     if (s.exists()) {
       const u = s.data();
       pseudoCourant = u.name || pseudo;
+      profilOk = !!u.pseudoOk;
+      if (!profilOk && !rappelFait) { rappelFait = true; msg("Choisis ton pseudo dans Mon profil pour pouvoir jouer."); }
       $("pseudo").textContent = pseudoCourant;
       $("jetons").textContent = "🪙 " + (u.chips || 0) + " jetons";
     }
@@ -1082,6 +1570,18 @@ onAuthStateChanged(auth, async user => {
       },
       e => msg("Erreur : " + e.code)
     );
+    let listeU = [], mapM = {};
+    const dessinerMembres = () => {
+      const box = $("membres");
+      box.textContent = "";
+      box.appendChild(ligne(listeU.length + " membres", "", ""));
+      listeU.slice().sort((a, b) => String(a.name).localeCompare(String(b.name))).forEach(u => {
+        const c = (mapM[u.id] && mapM[u.id].contact) || u.email || "(pas encore reconnecté)";
+        box.appendChild(ligne((u.name || "?") + " · " + c + " · " + (u.chips || 0) + " jetons", "", ""));
+      });
+    };
+    stopMem.push(onSnapshot(collection(db, "users"), snap => { listeU = snap.docs.map(d => ({ id: d.id, ...d.data() })); dessinerMembres(); }, e => msg("Erreur : " + e.code)));
+    stopMem.push(onSnapshot(collection(db, "membres"), snap => { mapM = {}; snap.forEach(d => { mapM[d.id] = d.data(); }); dessinerMembres(); }, e => msg("Erreur : " + e.code)));
   }
 });
 </script>
