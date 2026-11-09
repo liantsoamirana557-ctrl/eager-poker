@@ -70,6 +70,16 @@
   #decoCentre{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:70px;opacity:.2;pointer-events:none;border-radius:50%;overflow:hidden}
   .felt .pot,.felt #phase,.felt .rangee{position:relative;z-index:1}
   .bandeau{font-size:14px;color:#f4b400;min-height:0}
+  #mises,#volants{position:absolute;inset:0;pointer-events:none}
+  .pilemise{position:absolute;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:2px;pointer-events:none}
+  .pilemise.stat{position:static;transform:none}
+  .pile{display:flex;flex-direction:column-reverse;align-items:center}
+  .jeton{width:24px;height:9px;border-radius:50%;margin-top:-5px;border:2px dashed #ffffffaa;box-sizing:border-box;box-shadow:0 2px 0 #0007}
+  .mtot{font-size:12px;font-weight:bold;color:#ffd;text-shadow:0 1px 2px #000;font-variant-numeric:tabular-nums}
+  .vol{transition:left .7s ease,top .7s ease,opacity .7s ease}
+  #potJetons{min-height:4px}
+  .felt #potJetons{position:relative;z-index:1}
+  .avatar{border-radius:50%;object-fit:cover;border:2px solid #f4b400;margin:0 auto 2px;display:flex;align-items:center;justify-content:center;font-weight:bold;color:#022;box-sizing:border-box}
   .chrono{font-size:13px;color:#4cf;font-weight:bold}
   .att{color:#ffd37a}.ok{color:#7fe3a0}.non{color:#ff9a9a}
   #dernier{margin-top:12px;color:#cde;font-size:14px}
@@ -101,6 +111,10 @@
   <div class="boite">
     <h3>Mon profil</h3>
     <input id="nouveauPseudo" type="text" maxlength="14" placeholder="Nouveau pseudo (2 à 14 lettres)">
+    <div id="apercuPhoto" style="display:flex;justify-content:center;margin:6px 0"></div>
+    <input id="fichierPhoto" type="file" accept="image/*" hidden>
+    <button id="btnPhoto" class="gris">Insérer une photo</button>
+    <button id="btnPhotoRetirer" class="gris">Retirer ma photo</button>
     <button id="btnPseudo" class="gris">Changer mon pseudo</button>
     <span id="monUid" hidden></span>
     <button id="btnSuppr" class="quitter">Supprimer mon compte</button>
@@ -157,11 +171,14 @@
   <div class="salle">
     <div class="felt">
       <div id="decoCentre"></div>
+      <div id="potJetons"></div>
       <div class="pot">Pot : <b id="pot">0</b></div>
       <div id="phase"></div>
       <div class="rangee" id="board"></div>
     </div>
     <div id="sieges"></div>
+    <div id="mises"></div>
+    <div id="volants"></div>
   </div>
 
   <div id="maMainBox" style="display:none">
@@ -204,7 +221,8 @@
       <label>Dos des cartes<input type="color" id="dDos"></label>
     </div>
     <input id="dCentre" type="text" maxlength="20" placeholder="Texte ou emoji au centre">
-    <input id="dImage" type="text" placeholder="Lien d'une image au centre (https://...)">
+    <div class="ligne"><img id="dApercu" alt="" style="width:46px;height:46px;object-fit:contain;display:none"><div class="btns"><button id="btnDecoImg" class="gris">Insérer une image</button><button id="btnDecoImgRetirer" class="gris">Retirer</button></div></div>
+    <input id="fichierDeco" type="file" accept="image/*" hidden>
     <input id="dBandeau" type="text" maxlength="60" placeholder="Phrase sous le nom de la table">
     <button id="btnDeco">Appliquer le décor</button>
     <button id="btnDecoRaz" class="gris">Remettre le décor d'origine</button>
@@ -243,7 +261,7 @@ const moi = () => auth.currentUser ? auth.currentUser.uid : null;
 
 const DELAI = 10000;
 const ADMIN_UID = "vIia3H24Mla7zkdEBdUTn0VaIkD3";
-let pseudoCourant = "", dernierTables = null, mesDemandes = [], stopDem = null, stopAdmin = null, stopCom = null, sansMainDepuis = 0, dernierAuto = 0, abattageDepuis = 0, dernierAbattage = 0, botCle = "", botVuA = 0, botEnvoye = "", botsSig = "", profilOk = false, rappelFait = false, stopMem = [];
+let pseudoCourant = "", dernierTables = null, mesDemandes = [], stopDem = null, stopAdmin = null, stopCom = null, sansMainDepuis = 0, dernierAuto = 0, abattageDepuis = 0, dernierAbattage = 0, botCle = "", botVuA = 0, botEnvoye = "", botsSig = "", profilOk = false, rappelFait = false, stopMem = [], profilPhoto = "", decoImageData = "";
 let tableCourante = null;
 let stopUser = null, stopTables = null, stopTable = null;
 let etat = null;
@@ -759,7 +777,7 @@ function afficherBots(t) {
   if (moi() !== ADMIN_UID) { box.style.display = "none"; return; }
   box.style.display = "block";
   const bots = (t.players || []).filter(p => p.bot);
-  const sig = tableCourante + "|" + bots.map(b => b.uid + b.name + (b.actif === false ? "0" : "1")).join(",");
+  const sig = tableCourante + "|" + bots.map(b => b.uid + b.name + (b.actif === false ? "0" : "1") + (b.photo ? "p" : "")).join(",");
   if (sig === botsSig) return;
   botsSig = sig;
   const l = $("listeBots");
@@ -768,7 +786,7 @@ function afficherBots(t) {
     const l1 = document.createElement("div");
     l1.className = "ligne";
     const nom = document.createElement("span");
-    nom.textContent = "🤖 " + b.name + (b.actif === false ? " (repos)" : "");
+    nom.textContent = b.name + (b.actif === false ? " (repos)" : "");
     const btns = document.createElement("div");
     btns.className = "btns";
     const bj = document.createElement("button");
@@ -780,7 +798,7 @@ function afficherBots(t) {
     br.className = "quitter";
     br.onclick = () => modifierTable(x => { if (x.hand) throw new Error("main"); x.players = x.players.filter(p => p.uid !== b.uid); });
     btns.append(bj, br);
-    l1.append(nom, btns);
+    l1.append(avatarEl(b.photo, b.name, b.uid, 28), nom, btns);
     l.appendChild(l1);
     const l2 = document.createElement("div");
     l2.className = "ligne";
@@ -796,10 +814,174 @@ function afficherBots(t) {
     };
     l2.append(inp, rn);
     l.appendChild(l2);
+    const l3 = document.createElement("div");
+    l3.className = "ligne";
+    const fic = document.createElement("input");
+    fic.type = "file"; fic.accept = "image/*"; fic.hidden = true;
+    fic.onchange = async () => {
+      const f = fic.files[0];
+      fic.value = "";
+      if (!f) return;
+      if (!f.type.startsWith("image/")) { msg("Choisis une image."); return; }
+      try {
+        const data = await reduireImage(f, 96, 0.8, true);
+        modifierTable(x => { const q = x.players.find(p => p.uid === b.uid); if (q) q.photo = data; });
+      } catch (e) { msg("Cette image ne peut pas être lue."); }
+    };
+    const bp = document.createElement("button");
+    bp.textContent = "Insérer une photo";
+    bp.className = "gris";
+    bp.onclick = () => fic.click();
+    const bq = document.createElement("button");
+    bq.textContent = "Retirer la photo";
+    bq.className = "gris";
+    bq.onclick = () => modifierTable(x => { const q = x.players.find(p => p.uid === b.uid); if (q) q.photo = ""; });
+    l3.append(fic, bp, bq);
+    l.appendChild(l3);
   });
 }
 
 /* ---------- Décor des tables (réservé à Mirana) ---------- */
+/* ---------- Jetons posés devant les joueurs et jetons au centre ---------- */
+/* ---------- Photos choisies dans l'appareil (Drive, galerie, stockage interne) ---------- */
+function reduireImage(file, cote, qualite, carre) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      let sx = 0, sy = 0, sw = img.width, sh = img.height, w, h;
+      if (carre) {
+        const m = Math.min(img.width, img.height);
+        sx = (img.width - m) / 2; sy = (img.height - m) / 2; sw = m; sh = m;
+        w = h = cote;
+      } else {
+        const r = Math.min(1, cote / Math.max(img.width, img.height));
+        w = Math.round(img.width * r); h = Math.round(img.height * r);
+      }
+      const c = document.createElement("canvas");
+      c.width = w; c.height = h;
+      c.getContext("2d").drawImage(img, sx, sy, sw, sh, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      let data = c.toDataURL("image/webp", qualite);
+      if (!data.startsWith("data:image/webp")) data = c.toDataURL("image/jpeg", qualite);
+      resolve(data);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("image")); };
+    img.src = url;
+  });
+}
+function avatarEl(photo, nom, uid, px) {
+  const ok = typeof photo === "string" && /^data:image\//.test(photo);
+  const el = document.createElement(ok ? "img" : "div");
+  el.className = "avatar";
+  el.style.width = px + "px";
+  el.style.height = px + "px";
+  if (ok) { el.src = photo; el.alt = ""; }
+  else {
+    let h = 0;
+    String(uid).split("").forEach(c => { h = (h * 31 + c.charCodeAt(0)) % 360; });
+    el.style.background = "hsl(" + h + ",55%,60%)";
+    el.style.fontSize = Math.round(px * 0.45) + "px";
+    el.textContent = (String(nom || "?").trim()[0] || "?").toUpperCase();
+  }
+  return el;
+}
+function majApercuPhoto() {
+  const b = $("apercuPhoto");
+  b.textContent = "";
+  b.appendChild(avatarEl(profilPhoto, pseudoCourant, auth.currentUser ? auth.currentUser.uid : "x", 56));
+}
+async function majPhoto(data) {
+  const uid = auth.currentUser.uid;
+  try {
+    await updateDoc(doc(db, "users", uid), { photo: data });
+    if (dernierTables) {
+      for (const d of dernierTables.docs) {
+        const t = d.data();
+        if (!t.hand && (t.players || []).some(p => p.uid === uid)) {
+          await updateDoc(doc(db, "tables", d.id), { players: t.players.map(p => p.uid === uid ? { ...p, photo: data } : p) });
+        }
+      }
+    }
+    msg(data ? "Photo mise à jour." : "Photo retirée.");
+  } catch (e) { msg("Erreur : " + (e.code || e.message)); }
+}
+$("btnPhoto").onclick = () => $("fichierPhoto").click();
+$("btnPhotoRetirer").onclick = () => majPhoto("");
+$("fichierPhoto").onchange = async ev => {
+  const f = ev.target.files[0];
+  ev.target.value = "";
+  if (!f) return;
+  if (!f.type.startsWith("image/")) { msg("Choisis une image."); return; }
+  try { await majPhoto(await reduireImage(f, 96, 0.8, true)); }
+  catch (e) { msg("Cette image ne peut pas être lue."); }
+};
+function majApercuDeco() {
+  const a = $("dApercu");
+  if (decoImageData) { a.src = decoImageData; a.style.display = ""; } else { a.removeAttribute("src"); a.style.display = "none"; }
+}
+$("btnDecoImg").onclick = () => $("fichierDeco").click();
+$("btnDecoImgRetirer").onclick = () => { decoImageData = ""; majApercuDeco(); msg("Image retirée. Touche Appliquer le décor."); };
+$("fichierDeco").onchange = async ev => {
+  const f = ev.target.files[0];
+  ev.target.value = "";
+  if (!f) return;
+  if (!f.type.startsWith("image/")) { msg("Choisis une image."); return; }
+  try {
+    const data = await reduireImage(f, 420, 0.8, false);
+    if (data.length > 600000) { msg("Cette image est trop lourde."); return; }
+    decoImageData = data;
+    majApercuDeco();
+    msg("Image prête. Touche Appliquer le décor.");
+  } catch (e) { msg("Cette image ne peut pas être lue."); }
+};
+
+let betsPrec = {};
+const DENOM = [[5000, "#d4af37"], [1000, "#7b4bb5"], [500, "#2d6cdf"], [100, "#c0392b"], [50, "#e67e22"], [25, "#27ae60"], [10, "#7f8c8d"], [5, "#e84393"], [1, "#bdc3c7"]];
+const POSITIONS = [[50, 6], [84, 26], [84, 74], [50, 94], [16, 74], [16, 26]];
+function posMise(k) {
+  const p = POSITIONS[k];
+  return [p[0] + (50 - p[0]) * 0.42, p[1] + (50 - p[1]) * 0.42];
+}
+function jetonsEl(m, avecTotal, statique) {
+  const box = document.createElement("div");
+  box.className = "pilemise" + (statique ? " stat" : "");
+  const pile = document.createElement("div");
+  pile.className = "pile";
+  let reste = m, n = 0;
+  DENOM.forEach(d => {
+    while (reste >= d[0] && n < 7) {
+      const j = document.createElement("div");
+      j.className = "jeton";
+      j.style.background = d[1];
+      pile.appendChild(j);
+      reste -= d[0];
+      n++;
+    }
+  });
+  box.appendChild(pile);
+  if (avecTotal) {
+    const t = document.createElement("div");
+    t.className = "mtot";
+    t.textContent = m;
+    box.appendChild(t);
+  }
+  return box;
+}
+function voler(m, x, y) {
+  const el = jetonsEl(m, true, false);
+  el.classList.add("vol");
+  el.style.left = x + "%";
+  el.style.top = y + "%";
+  $("volants").appendChild(el);
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    el.style.left = "50%";
+    el.style.top = "48%";
+    el.style.opacity = "0.2";
+  }));
+  setTimeout(() => el.remove(), 900);
+}
+
 const PRESETS = {
   lamba: { feutre: "#5a1a3a", bordure: "#e0b04e", fond: "#2a0a1c", dos: "#7a1f4a" },
   roseor: { feutre: "#a8456b", bordure: "#f0c36a", fond: "#3a1226", dos: "#b03a60" },
@@ -818,9 +1000,10 @@ function appliquerDeco(d) {
   document.documentElement.style.setProperty("--dos", couleurOk(d.dos) ? d.dos : "#2c3e90");
   const c = $("decoCentre");
   c.textContent = "";
-  if (typeof d.image === "string" && /^https:\/\//.test(d.image)) {
+  const src = (typeof d.imageData === "string" && /^data:image\//.test(d.imageData)) ? d.imageData : ((typeof d.image === "string" && /^https:\/\//.test(d.image)) ? d.image : "");
+  if (src) {
     const im = document.createElement("img");
-    im.src = d.image; im.alt = "";
+    im.src = src; im.alt = "";
     im.style.maxWidth = "60%"; im.style.maxHeight = "60%";
     c.appendChild(im);
   } else if (d.centre) c.textContent = String(d.centre).slice(0, 20);
@@ -839,7 +1022,8 @@ function afficherDeco(t) {
   $("dFond").value = couleurOk(d.fond) ? d.fond : "#0b3d2e";
   $("dDos").value = couleurOk(d.dos) ? d.dos : "#2c3e90";
   $("dCentre").value = d.centre || "";
-  $("dImage").value = d.image || "";
+  decoImageData = d.imageData || "";
+  majApercuDeco();
   $("dBandeau").value = d.bandeau || "";
 }
 $("dPreset").onchange = () => {
@@ -849,11 +1033,9 @@ $("dPreset").onchange = () => {
 };
 $("btnDeco").onclick = async () => {
   if (moi() !== ADMIN_UID || !tableCourante) return;
-  const img = $("dImage").value.trim();
-  if (img && !/^https:\/\//.test(img)) { msg("Le lien de l'image doit commencer par https://"); return; }
   const deco = {
     feutre: $("dFeutre").value, bordure: $("dBordure").value, fond: $("dFond").value, dos: $("dDos").value,
-    centre: $("dCentre").value.trim().slice(0, 20), image: img, bandeau: $("dBandeau").value.trim().slice(0, 60)
+    centre: $("dCentre").value.trim().slice(0, 20), imageData: decoImageData, bandeau: $("dBandeau").value.trim().slice(0, 60)
   };
   try { await updateDoc(doc(db, "tables", tableCourante), { deco }); msg("Décor appliqué."); }
   catch (e) { msg("Erreur : " + (e.code || e.message)); }
@@ -922,6 +1104,7 @@ function montrerLobby() {
 
 function ouvrirTable(id) {
   tableCourante = id;
+  betsPrec = {};
   sansMainDepuis = 0;
   msg("");
   $("lobby").style.display = "none";
@@ -987,10 +1170,10 @@ function dessinerTable(t) {
       if (estMoi) s.classList.add("moi");
       if (h && h.turn === p.uid) s.classList.add("tour");
       const nom = document.createElement("b");
-      nom.textContent = estMoi ? "Toi" : (p.bot ? "🤖 " : "") + p.name + (p.actif === false ? " (repos)" : "");
+      nom.textContent = estMoi ? "Toi" : p.name + (p.actif === false && uid === ADMIN_UID ? " (repos)" : "");
       const jetons = document.createElement("div");
       jetons.textContent = typeof p.stack === "number" ? "🪙 " + p.stack : "🪙 —";
-      s.append(nom, jetons);
+      s.append(avatarEl(p.photo, p.name, p.uid, 30), nom, jetons);
       if (h && h.turn === p.uid) {
         const ch = document.createElement("div");
         ch.className = "chrono";
@@ -1009,7 +1192,7 @@ function dessinerTable(t) {
         tag.textContent = tags.join(" · ");
         s.appendChild(tag);
 
-        if ((h.bets[p.uid] || 0) > 0) {
+        if (false) {
           const mise = document.createElement("div");
           mise.className = "mise";
           mise.textContent = "mise " + h.bets[p.uid];
@@ -1027,6 +1210,31 @@ function dessinerTable(t) {
     }
     sieges.appendChild(s);
   }
+
+  const mm = $("mises");
+  mm.textContent = "";
+  const cur = {};
+  let sommeMises = 0;
+  if (h) {
+    joueurs.forEach((p, i) => {
+      const b = (h.bets && h.bets[p.uid]) || 0;
+      if (b > 0) {
+        sommeMises += b;
+        const [x, y] = posMise((i + decalage) % total);
+        const el = jetonsEl(b, true, false);
+        el.style.left = x + "%";
+        el.style.top = y + "%";
+        mm.appendChild(el);
+        cur[p.uid] = { m: b, x, y };
+      }
+    });
+  }
+  Object.keys(betsPrec).forEach(u => { if (h && !cur[u]) voler(betsPrec[u].m, betsPrec[u].x, betsPrec[u].y); });
+  betsPrec = cur;
+  const pj = $("potJetons");
+  pj.textContent = "";
+  const amasse = (t.pot || 0) - sommeMises;
+  if (h && amasse > 0) pj.appendChild(jetonsEl(amasse, false, true));
 
   const boite = $("maMainBox");
   const maMain = $("maMain");
@@ -1232,7 +1440,7 @@ async function rejoindre(id, pseudo) {
       if (players.some(p => p.uid === uid)) throw new Error("deja");
       if (players.length >= td.maxPlayers) throw new Error("pleine");
       tx.update(uref, { chips: chips - cave, tableId: id });
-      tx.update(tref, { players: [...players, { uid, name: pseudo, stack: cave }] });
+      tx.update(tref, { players: [...players, { uid, name: pseudo, stack: cave, photo: (u.exists() && u.data().photo) || "" }] });
     });
     msg("");
     ouvrirTable(id);
@@ -1533,6 +1741,8 @@ onAuthStateChanged(auth, async user => {
       const u = s.data();
       pseudoCourant = u.name || pseudo;
       profilOk = !!u.pseudoOk;
+      profilPhoto = u.photo || "";
+      majApercuPhoto();
       if (!profilOk && !rappelFait) { rappelFait = true; msg("Choisis ton pseudo dans Mon profil pour pouvoir jouer."); }
       $("pseudo").textContent = pseudoCourant;
       $("jetons").textContent = "🪙 " + (u.chips || 0) + " jetons";
