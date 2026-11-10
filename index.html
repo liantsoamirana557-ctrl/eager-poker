@@ -152,12 +152,17 @@
   <div class="boite" id="creerBox" style="display:none">
     <h3>Créer une table</h3>
     <input id="nomTable" type="text" maxlength="30" placeholder="Nom de la table">
+    <select id="typeTable">
+      <option value="normale">Table avec jetons</option>
+      <option value="neutre">Table neutre (2000 offerts)</option>
+    </select>
     <select id="blindeTable">
       <option value="10">Blinds 10 / 20</option><option value="25">Blinds 25 / 50</option>
       <option value="50">Blinds 50 / 100</option><option value="100">Blinds 100 / 200</option>
       <option value="250">Blinds 250 / 500</option><option value="500">Blinds 500 / 1000</option>
     </select>
     <input id="caveTable" type="number" min="2000" step="100" value="2000" placeholder="Cave minimum (2000 ou plus)">
+    <input id="caveMaxTable" type="number" min="2000" step="100" placeholder="Cave maximum (vide = sans limite)">
     <button id="btnTable">Créer la table</button>
   </div>
   <h2>Tables ouvertes</h2>
@@ -354,7 +359,7 @@ function gagnerPot(t, uid, raison) {
   const h = t.hand;
   const pot = sommePot(h);
   const p = t.players.find(x => x.uid === uid);
-  const commission = Math.floor(pot * 0.10);
+  const commission = t.neutre ? 0 : Math.floor(pot * 0.10);
   p.stack += pot - commission;
   t.commission = commission;
   t.finAt = Date.now();
@@ -716,7 +721,7 @@ function attribuerAuto(t) {
     let meilleur = null;
     elig.forEach(u => { if (!meilleur || cmpScore(score[u], meilleur) > 0) meilleur = score[u]; });
     const gagnants = elig.filter(u => cmpScore(score[u], meilleur) === 0);
-    const com = Math.floor(montant * 0.10);
+    const com = t.neutre ? 0 : Math.floor(montant * 0.10);
     commission += com;
     const net = montant - com;
     const part = Math.floor(net / gagnants.length);
@@ -1399,7 +1404,10 @@ $("btnTable").onclick = async () => {
   if (!nom) { msg("Donne un nom à la table."); return; }
   if (auth.currentUser.uid !== ADMIN_UID) { msg("Seule Mirana peut créer une table."); return; }
   const sb = Number($("blindeTable").value) || 10;
-  const caveMin = Math.max(2000, Math.floor(Number($("caveTable").value) || 2000));
+  const neutre = $("typeTable").value === "neutre";
+  const caveMin = neutre ? 2000 : Math.max(2000, Math.floor(Number($("caveTable").value) || 2000));
+  const caveMax = neutre ? 2000 : Math.floor(Number($("caveMaxTable").value) || 0);
+  if (caveMax && caveMax < caveMin) { msg("La cave maximum doit être supérieure au minimum."); return; }
   try {
     await addDoc(collection(db, "tables"), {
       name: nom,
@@ -1408,6 +1416,8 @@ $("btnTable").onclick = async () => {
       smallBlind: sb,
       bigBlind: sb * 2,
       caveMin,
+      caveMax,
+      neutre,
       pot: 0,
       players: [],
       createdAt: serverTimestamp()
@@ -1422,25 +1432,29 @@ async function rejoindre(id, pseudo) {
   const uid = auth.currentUser.uid;
   const cave = Math.floor(Number($("cave").value));
   if (!profilOk) { msg("Choisis d'abord ton pseudo dans Mon profil."); return; }
-  if (!(cave >= CAVE_MIN)) { msg("La cave minimum est de " + CAVE_MIN + " jetons."); return; }
   try {
     await runTransaction(db, async tx => {
       const uref = doc(db, "users", uid), tref = doc(db, "tables", id);
       const u = await tx.get(uref), t = await tx.get(tref);
       const chips = u.exists() ? (u.data().chips || 0) : 0;
-      if (cave > chips) throw new Error("pasassez");
       const ancien = u.exists() ? u.data().tableId : null;
       if (ancien && ancien !== id) {
         const anc = await tx.get(doc(db, "tables", ancien));
         if (anc.exists() && (anc.data().players || []).some(p => p.uid === uid)) throw new Error("ailleurs");
       }
       const td = t.data();
-      if (cave < (td.caveMin || CAVE_MIN)) throw new Error("cavemin:" + (td.caveMin || CAVE_MIN));
+      const neutre = !!td.neutre;
+      const mise = neutre ? (td.caveNeutre || 2000) : cave;
+      if (!neutre) {
+        if (!(cave >= (td.caveMin || CAVE_MIN))) throw new Error("cavemin:" + (td.caveMin || CAVE_MIN));
+        if (td.caveMax && cave > td.caveMax) throw new Error("cavemax:" + td.caveMax);
+        if (cave > chips) throw new Error("pasassez");
+      }
       const players = td.players || [];
       if (players.some(p => p.uid === uid)) throw new Error("deja");
       if (players.length >= td.maxPlayers) throw new Error("pleine");
-      tx.update(uref, { chips: chips - cave, tableId: id });
-      tx.update(tref, { players: [...players, { uid, name: pseudo, stack: cave, photo: (u.exists() && u.data().photo) || "" }] });
+      tx.update(uref, neutre ? { tableId: id } : { chips: chips - cave, tableId: id });
+      tx.update(tref, { players: [...players, { uid, name: pseudo, stack: mise, photo: (u.exists() && u.data().photo) || "" }] });
     });
     msg("");
     ouvrirTable(id);
@@ -1450,6 +1464,7 @@ async function rejoindre(id, pseudo) {
     else if (m === "ailleurs") msg("Tu es déjà assis à une autre table. Quitte-la d'abord.");
     else if (m === "deja") ouvrirTable(id);
     else if (m === "pleine") msg("Cette table est pleine.");
+    else if (m.startsWith("cavemax")) msg("La cave maximum de cette table est de " + m.split(":")[1] + " jetons.");
     else if (m.startsWith("cavemin")) msg("La cave minimum de cette table est de " + m.split(":")[1] + " jetons.");
     else msg("Erreur : " + (e.code || m));
   }
@@ -1467,8 +1482,13 @@ async function quitter(id) {
       const siege = (td.players || []).find(p => p.uid === uid);
       if (!siege) return;
       if (td.hand) throw new Error("main");
-      rendu = siege.stack || 0;
-      tx.update(uref, { chips: (u.exists() ? (u.data().chips || 0) : 0) + rendu, tableId: null });
+      if (td.neutre) {
+        rendu = 0;
+        tx.update(uref, { tableId: null });
+      } else {
+        rendu = siege.stack || 0;
+        tx.update(uref, { chips: (u.exists() ? (u.data().chips || 0) : 0) + rendu, tableId: null });
+      }
       tx.update(tref, { players: td.players.filter(p => p.uid !== uid) });
     });
     if (rendu > 0) msg(rendu + " jetons remis sur ton compte.");
@@ -1494,7 +1514,7 @@ function afficherTables(snap, user, pseudo) {
     const titre = document.createElement("h3");
     titre.textContent = t.name;
     const info = document.createElement("small");
-    info.textContent = joueurs.length + "/" + t.maxPlayers + " joueurs · blinds " + t.smallBlind + "/" + t.bigBlind + " · cave min " + (t.caveMin || 2000) + (t.hand ? " · main en cours" : "");
+    info.textContent = joueurs.length + "/" + t.maxPlayers + " joueurs · blinds " + t.smallBlind + "/" + t.bigBlind + (t.neutre ? " · table neutre, 2000 offerts" : " · cave " + (t.caveMin || 2000) + (t.caveMax ? " à " + t.caveMax : " et plus")) + (t.hand ? " · main en cours" : "");
     const noms = document.createElement("div");
     noms.textContent = joueurs.length ? joueurs.map(p => p.name).join(", ") : "Table vide";
     carte.append(titre, info, noms);
@@ -1532,7 +1552,7 @@ function afficherTables(snap, user, pseudo) {
         bouton.textContent = "Table pleine";
         bouton.disabled = true;
       } else {
-        bouton.textContent = "Rejoindre";
+        bouton.textContent = t.neutre ? "Rejoindre (2000 offerts)" : "Rejoindre";
         bouton.onclick = () => rejoindre(d.id, pseudoCourant);
       }
       carte.append(bouton);
