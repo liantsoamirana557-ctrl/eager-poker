@@ -941,6 +941,59 @@ $("fichierDeco").onchange = async ev => {
   } catch (e) { msg("Cette image ne peut pas être lue."); }
 };
 
+/* ---------- Gestion des tables par Mirana ---------- */
+let editId = null, brouillon = {}, conf = null;
+async function enregistrerTable(id, v) {
+  try {
+    await runTransaction(db, async tx => {
+      const ref = doc(db, "tables", id);
+      const snap = await tx.get(ref);
+      if (!snap.exists()) throw new Error("absente");
+      const t = snap.data();
+      const humains = (t.players || []).filter(p => !p.bot);
+      const neutre = v.type === "neutre";
+      if (neutre !== !!t.neutre && humains.length) throw new Error("humains");
+      if (v.sb !== (t.smallBlind || 10) && t.hand) throw new Error("main");
+      tx.update(ref, {
+        name: v.nom, neutre, smallBlind: v.sb, bigBlind: v.sb * 2,
+        caveMin: neutre ? 2000 : v.min, caveMax: neutre ? 2000 : v.max
+      });
+    });
+    editId = null; brouillon = {};
+    msg("Table modifiée.");
+  } catch (e) {
+    const m = e.message;
+    if (m === "humains") msg("Pour changer le type, vide d'abord la table.");
+    else if (m === "main") msg("Attends la fin de la main pour changer les blinds.");
+    else msg("Erreur : " + (e.code || m));
+  }
+}
+async function viderOuSupprimer(id, supprimer) {
+  try {
+    await runTransaction(db, async tx => {
+      const tref = doc(db, "tables", id);
+      const ts = await tx.get(tref);
+      if (!ts.exists()) return;
+      const t = ts.data();
+      const humains = (t.players || []).filter(p => !p.bot);
+      const lectures = [];
+      for (const p of humains) {
+        const uref = doc(db, "users", p.uid);
+        lectures.push({ p, uref, us: await tx.get(uref) });
+      }
+      lectures.forEach(l => {
+        if (!l.us.exists()) return;
+        if (t.neutre) { tx.update(l.uref, { tableId: null }); return; }
+        const rendu = (l.p.stack || 0) + ((t.hand && t.hand.paid && t.hand.paid[l.p.uid]) || 0);
+        tx.update(l.uref, { chips: (l.us.data().chips || 0) + rendu, tableId: null });
+      });
+      if (supprimer) tx.delete(tref);
+      else tx.update(tref, { players: (t.players || []).filter(p => p.bot), hand: null, pot: 0, dernier: "", finAt: Date.now() });
+    });
+    msg(supprimer ? "Table supprimée." : "Table vidée.");
+  } catch (e) { msg("Erreur : " + (e.code || e.message)); }
+}
+
 let betsPrec = {};
 const DENOM = [[5000, "#d4af37"], [1000, "#7b4bb5"], [500, "#2d6cdf"], [100, "#c0392b"], [50, "#e67e22"], [25, "#27ae60"], [10, "#7f8c8d"], [5, "#e84393"], [1, "#bdc3c7"]];
 const POSITIONS = [[50, 6], [84, 26], [84, 74], [50, 94], [16, 74], [16, 26]];
@@ -1520,21 +1573,82 @@ function afficherTables(snap, user, pseudo) {
     carte.append(titre, info, noms);
     if (couleurOk(t.deco && t.deco.feutre)) carte.style.background = t.deco.feutre;
     if (user.uid === ADMIN_UID) {
-      const lr = document.createElement("div");
-      lr.className = "ligne";
-      const inp = document.createElement("input");
-      inp.type = "text"; inp.maxLength = 30; inp.placeholder = "Nouveau nom";
-      inp.style.margin = "0"; inp.style.maxWidth = "none";
-      const br = document.createElement("button");
-      br.textContent = "Renommer"; br.className = "gris";
-      br.onclick = async () => {
-        const n = inp.value.trim();
-        if (!n) { msg("Écris le nouveau nom."); return; }
-        try { await updateDoc(doc(db, "tables", d.id), { name: n }); msg(""); }
-        catch (e) { msg("Erreur : " + (e.code || e.message)); }
-      };
-      lr.append(inp, br);
-      carte.append(lr);
+      const rafraichir = () => afficherTables(dernierTables, user, pseudo);
+      const bar = document.createElement("div");
+      bar.className = "ligne";
+      const bm = document.createElement("button");
+      bm.textContent = editId === d.id ? "Fermer" : "Modifier";
+      bm.className = "gris";
+      bm.onclick = () => { editId = editId === d.id ? null : d.id; brouillon = {}; conf = null; rafraichir(); };
+      const bs = document.createElement("button");
+      bs.textContent = "Supprimer";
+      bs.className = "quitter";
+      bs.onclick = () => { conf = { id: d.id, action: "supprimer" }; rafraichir(); };
+      bar.append(bm, bs);
+      carte.append(bar);
+
+      if (conf && conf.id === d.id) {
+        const c = document.createElement("div");
+        c.className = "ligne";
+        const tx1 = document.createElement("span");
+        tx1.textContent = conf.action === "supprimer" ? "Supprimer cette table ? Les jetons des joueurs retournent sur leurs comptes." : "Vider cette table ? Les jetons des joueurs retournent sur leurs comptes.";
+        const bb = document.createElement("div");
+        bb.className = "btns";
+        const oui = document.createElement("button");
+        oui.textContent = "Confirmer";
+        oui.className = "quitter";
+        oui.onclick = () => { const act = conf.action; conf = null; if (act === "supprimer") editId = null; viderOuSupprimer(d.id, act === "supprimer"); };
+        const non = document.createElement("button");
+        non.textContent = "Annuler";
+        non.className = "gris";
+        non.onclick = () => { conf = null; rafraichir(); };
+        bb.append(oui, non);
+        c.append(tx1, bb);
+        carte.append(c);
+      }
+
+      if (editId === d.id) {
+        const p = document.createElement("div");
+        p.className = "boite";
+        p.style.maxWidth = "none";
+        p.style.margin = "8px 0 0";
+        const champ = (cle, el) => { el.oninput = el.onchange = () => { brouillon[cle] = el.value; }; return el; };
+        const inpNom = champ("nom", document.createElement("input"));
+        inpNom.type = "text"; inpNom.maxLength = 30; inpNom.placeholder = "Nom de la table";
+        inpNom.value = brouillon.nom !== undefined ? brouillon.nom : t.name;
+        const selType = champ("type", document.createElement("select"));
+        [["normale", "Table avec jetons"], ["neutre", "Table neutre (2000 offerts)"]].forEach(o => {
+          const op = document.createElement("option"); op.value = o[0]; op.textContent = o[1]; selType.appendChild(op);
+        });
+        selType.value = brouillon.type !== undefined ? brouillon.type : (t.neutre ? "neutre" : "normale");
+        const selBl = champ("sb", document.createElement("select"));
+        [10, 25, 50, 100, 250, 500].forEach(v => {
+          const op = document.createElement("option"); op.value = String(v); op.textContent = "Blinds " + v + " / " + (v * 2); selBl.appendChild(op);
+        });
+        selBl.value = brouillon.sb !== undefined ? brouillon.sb : String(t.smallBlind || 10);
+        const inMin = champ("min", document.createElement("input"));
+        inMin.type = "number"; inMin.min = "2000"; inMin.step = "100"; inMin.placeholder = "Cave minimum (2000 ou plus)";
+        inMin.value = brouillon.min !== undefined ? brouillon.min : String(t.caveMin || 2000);
+        const inMax = champ("max", document.createElement("input"));
+        inMax.type = "number"; inMax.min = "2000"; inMax.step = "100"; inMax.placeholder = "Cave maximum (vide = sans limite)";
+        inMax.value = brouillon.max !== undefined ? brouillon.max : (t.caveMax ? String(t.caveMax) : "");
+        const ok = document.createElement("button");
+        ok.textContent = "Enregistrer";
+        ok.onclick = () => {
+          const nom = inpNom.value.trim();
+          if (!nom) { msg("Donne un nom à la table."); return; }
+          const min = Math.max(2000, Math.floor(Number(inMin.value) || 2000));
+          const max = Math.floor(Number(inMax.value) || 0);
+          if (selType.value !== "neutre" && max && max < min) { msg("La cave maximum doit être supérieure au minimum."); return; }
+          enregistrerTable(d.id, { nom, type: selType.value, sb: Number(selBl.value) || 10, min, max });
+        };
+        const vider = document.createElement("button");
+        vider.textContent = "Vider la table";
+        vider.className = "gris";
+        vider.onclick = () => { conf = { id: d.id, action: "vider" }; rafraichir(); };
+        p.append(inpNom, selType, selBl, inMin, inMax, ok, vider);
+        carte.append(p);
+      }
     }
 
     if (dedans) {
