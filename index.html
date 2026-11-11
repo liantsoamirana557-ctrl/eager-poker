@@ -127,6 +127,7 @@
 
   <div class="boite">
     <h3>Jetons</h3>
+    <input id="codeValid" type="text" inputmode="numeric" autocomplete="off" placeholder="Code de validation (plus de 30 chiffres)">
     <select id="montant"><option value="1000">1 000 jetons</option><option value="2000">2 000 jetons</option><option value="5000">5 000 jetons</option></select>
     <button id="btnDemande">Demander à Mirana</button>
     <input id="rendre" type="number" min="1" placeholder="Jetons à rendre">
@@ -1762,11 +1763,14 @@ $("btnSupprOui").onclick = async () => {
 $("btnDemande").onclick = async () => {
   if (mesDemandes.some(d => d.statut === "en_attente")) { msg("Tu as déjà une demande en attente."); return; }
   const montant = Number($("montant").value);
+  const code = $("codeValid").value.replace(/\D/g, "");
+  if (code.length <= 30) { msg("Le code de validation doit avoir plus de 30 chiffres."); return; }
   try {
     await addDoc(collection(db, "demandes"), {
       uid: auth.currentUser.uid, name: pseudoCourant, contact: auth.currentUser.email || auth.currentUser.phoneNumber || "",
-      montant, statut: "en_attente", createdAt: serverTimestamp()
+      montant, code, statut: "en_attente", createdAt: serverTimestamp()
     });
+    $("codeValid").value = "";
     msg("Demande envoyée à Mirana.");
   } catch (e) { msg("Erreur : " + (e.code || e.message)); }
 };
@@ -1812,7 +1816,7 @@ function afficherAdmin(snap) {
   $("nbAttente").textContent = enAttente.length ? "(" + enAttente.length + ")" : "";
   if (!enAttente.length) att.appendChild(ligne("Aucune demande en attente.", "", ""));
   enAttente.forEach(d => {
-    const l = ligne(qui(d) + " · " + d.montant + " jetons · " + quand(d), "", "");
+    const l = ligne(qui(d) + " · " + d.montant + " jetons · " + quand(d) + " · code : " + (d.code || "aucun"), "", "");
     const b = document.createElement("div");
     b.className = "btns";
     const ok = document.createElement("button");
@@ -1830,7 +1834,7 @@ function afficherAdmin(snap) {
   if (!faites.length) his.appendChild(ligne("Rien pour l'instant.", "", ""));
   faites.forEach(d => {
     const st = STATUT[d.statut] || ["?", ""];
-    his.appendChild(ligne(qui(d) + (d.type === "retour" ? " a rendu " : " · ") + d.montant + " · " + quand(d), st[1], st[0]));
+    his.appendChild(ligne(qui(d) + (d.type === "retour" ? " a rendu " : " · ") + d.montant + " · " + quand(d) + (d.code ? " · code : " + d.code : ""), st[1], st[0]));
   });
 }
 
@@ -1930,4 +1934,4 @@ onAuthStateChanged(auth, async user => {
 });
 </script>
 </body>
-  </html>
+</html>
