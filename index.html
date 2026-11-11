@@ -121,11 +121,11 @@
 
   <div class="boite">
     <h3>Jetons</h3>
-    <input id="codeValid" type="text" inputmode="numeric" autocomplete="off" placeholder="Code de validation (plus de 30 chiffres)">
-    <select id="montant"><option value="1000">1 000 jetons</option><option value="2000">2 000 jetons</option><option value="5000">5 000 jetons</option></select>
-    <button id="btnDemande">Demander à Mirana</button>
+    <input id="codeValid" type="text" autocomplete="off" maxlength="64" placeholder="Code de validation (6 caractères minimum)">
+    <input id="montant" type="number" min="1" step="1" inputmode="numeric" placeholder="Nombre de jetons demandés">
+    <button id="btnDemande">Demander à Eager Poker</button>
     <input id="rendre" type="number" min="1" placeholder="Jetons à rendre">
-    <button id="btnRendre" class="gris">Rendre à Mirana</button>
+    <button id="btnRendre" class="gris">Rendre à Eager Poker</button>
     <div id="mesDemandes"></div>
   </div>
 
@@ -135,7 +135,7 @@
   </div>
 
   <div class="boite" id="adminBox" style="display:none">
-    <h3>Mirana : demandes de jetons <span id="nbAttente"></span></h3>
+    <h3>Eager Poker : demandes de jetons <span id="nbAttente"></span></h3>
     <div id="commissions" class="mini"></div>
     <div id="demandesAttente"></div>
     <h3 style="margin-top:12px">Historique</h3>
@@ -358,7 +358,7 @@ function gagnerPot(t, uid, raison) {
   p.stack += pot - commission;
   t.commission = commission;
   t.finAt = Date.now();
-  t.dernier = p.name + " gagne " + (pot - commission) + " (" + raison + "), commission Mirana " + commission;
+  t.dernier = p.name + " gagne " + (pot - commission) + " (" + raison + "), commission Eager Poker " + commission;
   t.dealerUid = h.dealer;
   t.pot = 0;
   t.hand = null;
@@ -730,7 +730,7 @@ function attribuerAuto(t) {
   });
   t.commission = commission;
   t.finAt = Date.now();
-  t.dernier = lignes.join(" · ") + " · commission Mirana " + commission;
+  t.dernier = lignes.join(" · ") + " · commission Eager Poker " + commission;
   t.dealerUid = h.dealer;
   t.pot = 0;
   t.hand = null;
@@ -745,7 +745,7 @@ async function resoudreAbattage() {
   } catch (e) { erreurJeu(e); }
 }
 
-/* ---------- Robots gérés par Mirana ---------- */
+/* ---------- Robots gérés par Eager Poker ---------- */
 async function modifierTable(fn) {
   if (moi() !== ADMIN_UID || !tableCourante) return;
   try {
@@ -841,7 +841,7 @@ function afficherBots(t) {
   });
 }
 
-/* ---------- Décor des tables (réservé à Mirana) ---------- */
+/* ---------- Décor des tables (réservé à Eager Poker) ---------- */
 /* ---------- Jetons posés devant les joueurs et jetons au centre ---------- */
 /* ---------- Photos choisies dans l'appareil (Drive, galerie, stockage interne) ---------- */
 function reduireImage(file, cote, qualite, carre) {
@@ -936,7 +936,7 @@ $("fichierDeco").onchange = async ev => {
   } catch (e) { msg("Cette image ne peut pas être lue."); }
 };
 
-/* ---------- Gestion des tables par Mirana ---------- */
+/* ---------- Gestion des tables par Eager Poker ---------- */
 let editId = null, brouillon = {}, conf = null;
 async function enregistrerTable(id, v) {
   try {
@@ -1200,7 +1200,7 @@ function dessinerTable(t) {
   const h = t.hand || null;
   const joueurs = t.players || [];
 
-  $("titreTable").textContent = t.name + (uid === ADMIN_UID ? " (vue Mirana : toutes les cartes)" : "");
+  $("titreTable").textContent = t.name + (uid === ADMIN_UID ? " (vue Eager Poker : toutes les cartes)" : "");
   $("pot").textContent = t.pot || 0;
   majTexte();
 
@@ -1455,7 +1455,7 @@ $("btnValider").onclick = async () => {
 $("btnTable").onclick = async () => {
   const nom = $("nomTable").value.trim();
   if (!nom) { msg("Donne un nom à la table."); return; }
-  if (auth.currentUser.uid !== ADMIN_UID) { msg("Seule Mirana peut créer une table."); return; }
+  if (auth.currentUser.uid !== ADMIN_UID) { msg("Seul Eager Poker (administrateur) peut créer une table."); return; }
   const sb = Number($("blindeTable").value) || 10;
   const neutre = $("typeTable").value === "neutre";
   const caveMin = neutre ? 2000 : Math.max(2000, Math.floor(Number($("caveTable").value) || 2000));
@@ -1513,7 +1513,7 @@ async function rejoindre(id, pseudo) {
     ouvrirTable(id);
   } catch (e) {
     const m = e.message;
-    if (m === "pasassez") msg("Ton compte n'a pas assez de jetons pour cette cave. Demande-en à Mirana.");
+    if (m === "pasassez") msg("Ton compte n'a pas assez de jetons pour cette cave. Demande-en à Eager Poker.");
     else if (m === "ailleurs") msg("Tu es déjà assis à une autre table. Quitte-la d'abord.");
     else if (m === "deja") ouvrirTable(id);
     else if (m === "pleine") msg("Cette table est pleine.");
@@ -1682,7 +1682,7 @@ function afficherTables(snap, user, pseudo) {
   });
 }
 
-/* ---------- Pseudo, demandes de jetons, validation par Mirana ---------- */
+/* ---------- Pseudo, demandes de jetons, validation par Eager Poker ---------- */
 const STATUT = { en_attente: ["En attente", "att"], acceptee: ["Acceptée", "ok"], refusee: ["Refusée", "non"], rendu: ["Rendu", "ok"] };
 function quand(d) {
   const t = d && d.createdAt && d.createdAt.toDate ? d.createdAt.toDate() : null;
@@ -1731,7 +1731,7 @@ $("btnRendre").onclick = async () => {
       tx.set(doc(collection(db, "demandes")), { uid, name: pseudoCourant, contact: auth.currentUser.email || auth.currentUser.phoneNumber || "", type: "retour", montant: m, statut: "rendu", createdAt: serverTimestamp() });
     });
     $("rendre").value = "";
-    msg(m + " jetons rendus à Mirana.");
+    msg(m + " jetons rendus à Eager Poker.");
   } catch (e) { msg(e.message === "pasassez" ? "Tu n'as pas assez de jetons sur ton compte." : "Erreur : " + (e.code || e.message)); }
 };
 
@@ -1761,16 +1761,17 @@ $("btnSupprOui").onclick = async () => {
 
 $("btnDemande").onclick = async () => {
   if (mesDemandes.some(d => d.statut === "en_attente")) { msg("Tu as déjà une demande en attente."); return; }
-  const montant = Number($("montant").value);
-  const code = $("codeValid").value.replace(/\D/g, "");
-  if (code.length <= 30) { msg("Le code de validation doit avoir plus de 30 chiffres."); return; }
+  const montant = Math.floor(Number($("montant").value));
+  if (!(montant > 0)) { msg("Écris le nombre de jetons que tu demandes."); return; }
+  const code = $("codeValid").value.replace(/[^A-Za-z0-9]/g, "");
+  if (code.length < 6) { msg("Le code de validation doit avoir au moins 6 chiffres ou lettres."); return; }
   try {
     await addDoc(collection(db, "demandes"), {
       uid: auth.currentUser.uid, name: pseudoCourant, contact: auth.currentUser.email || auth.currentUser.phoneNumber || "",
       montant, code, statut: "en_attente", createdAt: serverTimestamp()
     });
-    $("codeValid").value = "";
-    msg("Demande envoyée à Mirana.");
+    $("codeValid").value = ""; $("montant").value = "";
+    msg("Demande envoyée à Eager Poker.");
   } catch (e) { msg("Erreur : " + (e.code || e.message)); }
 };
 
@@ -1779,7 +1780,7 @@ function afficherMesDemandes() {
   box.textContent = "";
   mesDemandes.slice(0, 5).forEach(d => {
     const st = STATUT[d.statut] || ["?", ""];
-    box.appendChild(ligne((d.type === "retour" ? "Rendu à Mirana : " : "Demande : ") + d.montant + " · " + quand(d), st[1], st[0]));
+    box.appendChild(ligne((d.type === "retour" ? "Rendu à Eager Poker : " : "Demande : ") + d.montant + " · " + quand(d), st[1], st[0]));
   });
 }
 
@@ -1933,4 +1934,4 @@ onAuthStateChanged(auth, async user => {
 });
 </script>
 </body>
-  </html>
+</html>
