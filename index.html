@@ -2303,4 +2303,54 @@ onAuthStateChanged(auth, async user => {
 
   stopTables = onSnapshot(
     query(collection(db, "tables"), orderBy("createdAt", "desc")),
-   
+   snap => afficherTables(snap, user, pseudo),
+    e => msg("Erreur : " + e.code)
+  );
+
+  stopDem = onSnapshot(
+    query(collection(db, "demandes"), where("uid", "==", user.uid)),
+    snap => {
+      mesDemandes = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => ((b.createdAt && b.createdAt.seconds) || 9e9) - ((a.createdAt && a.createdAt.seconds) || 9e9));
+      afficherMesDemandes();
+    },
+    e => msg("Erreur : " + e.code)
+  );
+
+  if (user.uid !== ADMIN_UID) {
+    stopRole = onSnapshot(
+      doc(db, "gestionnaires", user.uid),
+      s => { gestOk = s.exists(); majAbonnementStaff(); majVue(); },
+      () => { gestOk = false; }
+    );
+  }
+
+  if (user.uid === ADMIN_UID) {
+    majAbonnementStaff();
+    stopCom = onSnapshot(
+      query(collection(db, "commissions"), orderBy("createdAt", "desc"), limit(200)),
+      snap => {
+        let total = 0;
+        snap.forEach(d => { total += d.data().montant || 0; });
+        $("commissions").textContent = "Commissions de la table : " + total + " jetons (" + snap.size + " mains)";
+      },
+      e => msg("Erreur : " + e.code)
+    );
+    const dessinerMembres = () => {
+      const box = $("membres");
+      box.textContent = "";
+      box.appendChild(ligne(listeU.length + " membres", "", ""));
+      listeU.slice().sort((a, b) => String(a.name).localeCompare(String(b.name))).forEach(u => {
+        const c = (mapM[u.id] && mapM[u.id].contact) || u.email || "(pas encore reconnecté)";
+        box.appendChild(ligne((u.name || "?") + " · " + c + " · " + (u.chips || 0) + " jetons", "", ""));
+      });
+      dessinerGest();
+    };
+    stopMem.push(onSnapshot(collection(db, "users"), snap => { listeU = snap.docs.map(d => ({ id: d.id, ...d.data() })); dessinerMembres(); }, e => msg("Erreur : " + e.code)));
+    stopMem.push(onSnapshot(collection(db, "membres"), snap => { mapM = {}; snap.forEach(d => { mapM[d.id] = d.data(); }); dessinerMembres(); }, e => msg("Erreur : " + e.code)));
+    stopMem.push(onSnapshot(collection(db, "gestionnaires"), snap => { listeGest = snap.docs.map(d => ({ id: d.id, ...d.data() })); dessinerGest(); }, e => msg("Erreur : " + e.code)));
+  }
+});
+</script>
+</body>
+  </html>
