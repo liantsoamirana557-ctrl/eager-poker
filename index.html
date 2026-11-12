@@ -52,7 +52,7 @@
   #actions button{margin:0;width:100%;max-width:none;padding:8px 6px;font-size:14px}
   #btnRaise{padding:12px 6px;font-size:16px;letter-spacing:.5px}
   #zoneRaise{display:flex;gap:8px;align-items:center}
-  #zoneRaise input{flex:1;width:auto;max-width:none;margin:0}
+  #zoneRaise input{flex:1;width:auto;max-width:none;margin:0;font-size:16px;padding:7px 10px;min-width:0}
   #zoneRaise button{width:auto;padding:6px 10px;font-size:13px}
   #choixGagnant button{margin:6px auto}
   .boite{max-width:320px;margin:10px auto;padding:10px;background:#145a43;border-radius:10px;text-align:left}
@@ -229,7 +229,7 @@
 
   <div id="actions" style="display:none">
     <div id="infoAction"></div>
-    <div id="zoneRaise"><input type="range" id="slider"><button id="btnAllin" class="gris">Tapis</button></div>
+    <div id="zoneRaise"><input type="number" id="montantRaise" inputmode="numeric" min="1" step="1" autocomplete="off" placeholder="Raise à…"><button id="btnAllin" class="gris">Tapis</button></div>
     <button id="btnRaise">Raise</button>
     <button id="btnCall">Check</button>
     <button id="btnFold" class="quitter">Se coucher</button>
@@ -1225,6 +1225,7 @@ let reserveBas = 200;
 function ajusterTable() {
   const tv = $("tableView");
   if (!tv || tv.style.display === "none") return;
+  if (document.activeElement && document.activeElement.id === "montantRaise") return;
   const wrap = $("salleWrap"), salle = wrap.querySelector(".salle");
   const vw = document.documentElement.clientWidth - 12;
   const haut = wrap.getBoundingClientRect().top + window.scrollY;
@@ -1460,36 +1461,52 @@ function majActions(t) {
   bc.dataset.type = aPayer > 0 ? "call" : "check";
 
   const peutRelancer = maxTo > h.currentBet;
-  const slider = $("slider");
+  const champ = $("montantRaise");
   const br = $("btnRaise");
   const ba = $("btnAllin");
+  champ.value = "";
+  champ.dataset.min = minTo;
+  champ.dataset.max = maxTo;
+  br.dataset.min = minTo;
   if (peutRelancer) {
     ba.style.display = "";
     ba.textContent = "Tapis (" + maxTo + ")";
     ba.dataset.cible = maxTo;
     if (maxTo > minTo) {
-      slider.min = minTo;
-      slider.max = maxTo;
-      slider.step = t.smallBlind || 10;
-      slider.value = minTo;
-      slider.style.display = "";
+      champ.placeholder = "Raise à… (min " + minTo + ")";
+      champ.style.display = "";
       br.style.display = "";
-      br.textContent = "Raise à " + slider.value;
+      br.textContent = "Raise";
     } else {
-      slider.style.display = "none";
+      champ.style.display = "none";
       br.style.display = "none";
     }
   } else {
-    slider.style.display = "none";
+    champ.style.display = "none";
     br.style.display = "none";
     ba.style.display = "none";
   }
 }
 
-$("slider").oninput = () => { $("btnRaise").textContent = "Raise à " + $("slider").value; };
+function lancerRaise() {
+  const champ = $("montantRaise");
+  const min = Number(champ.dataset.min), max = Number(champ.dataset.max);
+  const v = Math.floor(Number(champ.value));
+  if (!champ.value.trim() || !(v > 0)) { msg("Écris le montant du raise (minimum " + min + ")."); return; }
+  if (v > max) { msg("Tu n'as que " + max + " jetons. Écris " + max + " ou touche Tapis."); return; }
+  if (v < min) { msg("Le raise minimum est de " + min + "."); return; }
+  msg("");
+  jouer("raise", v);
+}
+$("montantRaise").oninput = () => {
+  const v = $("montantRaise").value.trim();
+  $("btnRaise").textContent = v ? "Raise à " + v : "Raise";
+};
+$("montantRaise").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); lancerRaise(); } };
+$("montantRaise").onblur = () => setTimeout(ajusterTable, 300);
 $("btnFold").onclick = () => jouer("fold");
 $("btnCall").onclick = () => jouer($("btnCall").dataset.type);
-$("btnRaise").onclick = () => jouer("raise", $("slider").value);
+$("btnRaise").onclick = lancerRaise;
 $("btnAllin").onclick = () => jouer("raise", $("btnAllin").dataset.cible);
 $("btnLancer").onclick = () => lancerMain(false);
 $("btnFin").onclick = annulerMain;
@@ -2035,4 +2052,4 @@ onAuthStateChanged(auth, async user => {
 });
 </script>
 </body>
-  </html>
+</html>
