@@ -98,6 +98,7 @@
   #actions #btnRaise{grid-column:auto;order:3;padding:9px 4px;font-size:14px;letter-spacing:0}
   #actions #btnCall{order:2}
   #actions #btnFold{order:1}
+  .ligne select{margin:0;flex:1;width:auto;max-width:none;padding:6px 8px;min-width:0}
 </style>
 </head>
 <body>
@@ -194,6 +195,8 @@
     </select>
     <input id="caveTable" type="number" min="2000" step="100" value="2000" placeholder="Cave minimum (2000 ou plus)">
     <input id="caveMaxTable" type="number" min="2000" step="100" placeholder="Cave maximum (vide = sans limite)">
+    <div class="ligne"><span id="musiqueNom" class="mini">Aucune musique de fond</span><div class="btns"><button id="btnMusique" class="gris">Insérer une musique</button><button id="btnMusiqueRetirer" class="gris">Retirer</button></div></div>
+    <input id="fichierMusique" type="file" accept="audio/*" hidden>
     <button id="btnTable">Créer la table</button>
   </div>
   <h2 id="titreListe">Tables ouvertes</h2>
@@ -204,7 +207,7 @@
 </div>
 
 <div id="tableView" style="display:none">
-  <div id="enteteTable"><button id="btnRetourHaut" class="gris">←</button><h2 id="titreTable"></h2></div>
+  <div id="enteteTable"><button id="btnRetourHaut" class="gris">←</button><h2 id="titreTable"></h2><button id="btnSon" class="gris">🔊</button></div>
   <div id="bandeauTable" class="bandeau"></div>
   <div id="salleWrap">
   <div class="salle">
@@ -244,6 +247,12 @@
     <div id="listeBots"></div>
     <input id="nomBot" type="text" maxlength="14" placeholder="Nom du robot">
     <input id="caveBot" type="number" min="2000" step="100" value="2000" placeholder="Cave du robot">
+    <select id="styleBot">
+      <option value="prudent">Style : Prudent</option>
+      <option value="modere" selected>Style : Modéré</option>
+      <option value="agressif">Style : Agressif</option>
+      <option value="tres">Style : Très agressif</option>
+    </select>
     <button id="btnAjoutBot" class="gris">Ajouter un robot</button>
   </div>
 
@@ -487,6 +496,7 @@ function appliquerAction(t, uid, type, montant) {
   } else {
     throw new Error("action");
   }
+  t.action = { uid, type, n: ((t.action && t.action.n) || 0) + 1 };
   tourSuivantOuFin(t);
 }
 
@@ -502,7 +512,8 @@ async function transaction(fn) {
       hand: t.hand || null,
       dealerUid: t.dealerUid || null,
       dernier: t.dernier || "",
-      finAt: t.finAt || 0
+      finAt: t.finAt || 0,
+      action: t.action || null
     });
     if (t.commission > 0) {
       tx.set(doc(collection(db, "commissions")), { tableId: tableCourante, montant: t.commission, createdAt: serverTimestamp() });
@@ -716,9 +727,17 @@ function force(hole, board) {
   }
   return v;
 }
+const PROFILS = {
+  prudent: { agr: -0.1, bluff: 0, taille: 0.8, shove: 0.15, marge: 0.22, limp: 0.35 },
+  modere: { agr: 0, bluff: 0, taille: 1, shove: 0.35, marge: 0.15, limp: 0.5 },
+  agressif: { agr: 0.12, bluff: 0.15, taille: 1.3, shove: 0.5, marge: 0.08, limp: 0.65 },
+  tres: { agr: 0.22, bluff: 0.3, taille: 1.7, shove: 0.7, marge: 0, limp: 0.85 }
+};
+const NOM_STYLE = { prudent: "Prudent", modere: "Modéré", agressif: "Agressif", tres: "Très agressif" };
 function decisionBot(t, uid) {
   const h = t.hand;
   const p = t.players.find(x => x.uid === uid);
+  const pr = PROFILS[p.style] || PROFILS.modere;
   const hole = h.hands[uid].map(parseCarte), board = h.board.map(parseCarte);
   const deja = h.bets[uid] || 0;
   const aPayer = h.currentBet - deja;
@@ -730,21 +749,21 @@ function decisionBot(t, uid) {
   const e = f + (Math.random() - 0.5) * 0.2;
   const potOdds = aPayer / (pot + aPayer || 1);
   const rt = fr => {
-    const add = Math.max(h.minRaise, Math.round(fr * (pot + aPayer) / bb) * bb);
+    const add = Math.max(h.minRaise, Math.round(fr * pr.taille * (pot + aPayer) / bb) * bb);
     return Math.min(Math.max(h.currentBet + add, minTo), cap);
   };
   const peutRelancer = cap > h.currentBet;
   if (aPayer === 0) {
-    if (peutRelancer && e > 0.6) return { type: "raise", to: rt(0.5 + Math.random() * 0.4) };
+    if (peutRelancer && (e > 0.6 - pr.agr || (e > 0.25 && Math.random() < pr.bluff))) return { type: "raise", to: rt(0.5 + Math.random() * 0.4) };
     return { type: "check" };
   }
-  if (peutRelancer && e > 0.82) {
-    if (e > 0.93 && Math.random() < 0.35) return { type: "raise", to: cap };
+  if (peutRelancer && (e > 0.82 - pr.agr || (e > 0.3 && Math.random() < pr.bluff * 0.5))) {
+    if (e > 0.93 - pr.agr / 2 && Math.random() < pr.shove) return { type: "raise", to: cap };
     return { type: "raise", to: rt(0.7 + Math.random() * 0.6) };
   }
-  if (aPayer >= p.stack) return { type: e > 0.6 ? "call" : "fold" };
-  if (e > potOdds + 0.15) return { type: "call" };
-  if (aPayer <= bb && f > 0.2 && Math.random() < 0.5) return { type: "call" };
+  if (aPayer >= p.stack) return { type: e > 0.6 - pr.agr / 2 ? "call" : "fold" };
+  if (e > potOdds + pr.marge) return { type: "call" };
+  if (aPayer <= bb && f > 0.2 && Math.random() < pr.limp) return { type: "call" };
   return { type: "fold" };
 }
 async function jouerBot(turn, deadline) {
@@ -838,7 +857,7 @@ $("btnAjoutBot").onclick = () => {
   modifierTable(t => {
     if (t.players.length >= NB_SIEGES) throw new Error("pleine");
     const n = t.players.filter(p => p.bot).length + 1;
-    t.players.push({ uid: "bot_" + Date.now().toString(36) + Math.floor(Math.random() * 1000), name: nom || "Robot " + n, stack: Math.max(t.caveMin || 2000, cave), bot: true, actif: true });
+    t.players.push({ uid: "bot_" + Date.now().toString(36) + Math.floor(Math.random() * 1000), name: nom || "Robot " + n, stack: Math.max(t.caveMin || 2000, cave), bot: true, actif: true, style: $("styleBot").value });
   });
   $("nomBot").value = "";
 };
@@ -847,7 +866,7 @@ function afficherBots(t) {
   if (!adminActif()) { box.style.display = "none"; return; }
   box.style.display = "block";
   const bots = (t.players || []).filter(p => p.bot);
-  const sig = tableCourante + "|" + bots.map(b => b.uid + b.name + (b.actif === false ? "0" : "1") + (b.photo ? "p" : "")).join(",");
+  const sig = tableCourante + "|" + bots.map(b => b.uid + b.name + (b.actif === false ? "0" : "1") + (b.photo ? "p" : "") + (b.style || "modere")).join(",");
   if (sig === botsSig) return;
   botsSig = sig;
   const l = $("listeBots");
@@ -856,7 +875,7 @@ function afficherBots(t) {
     const l1 = document.createElement("div");
     l1.className = "ligne";
     const nom = document.createElement("span");
-    nom.textContent = b.name + (b.actif === false ? " (repos)" : "");
+    nom.textContent = b.name + " · " + (NOM_STYLE[b.style] || "Modéré") + (b.actif === false ? " (repos)" : "");
     const btns = document.createElement("div");
     btns.className = "btns";
     const bj = document.createElement("button");
@@ -908,6 +927,14 @@ function afficherBots(t) {
     bq.onclick = () => modifierTable(x => { const q = x.players.find(p => p.uid === b.uid); if (q) q.photo = ""; });
     l3.append(fic, bp, bq);
     l.appendChild(l3);
+    const l4 = document.createElement("div");
+    l4.className = "ligne";
+    const sel = document.createElement("select");
+    Object.keys(NOM_STYLE).forEach(k => { const op = document.createElement("option"); op.value = k; op.textContent = "Style : " + NOM_STYLE[k]; sel.appendChild(op); });
+    sel.value = b.style || "modere";
+    sel.onchange = () => modifierTable(x => { const q = x.players.find(p => p.uid === b.uid); if (q) q.style = sel.value; });
+    l4.appendChild(sel);
+    l.appendChild(l4);
   });
 }
 
@@ -1033,6 +1060,63 @@ async function enregistrerTable(id, v) {
     else msg("Erreur : " + (e.code || m));
   }
 }
+const MUSIQUE_MAX = 4 * 1024 * 1024, MORCEAU = 600000;
+function lireBase64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result).split(",")[1] || "");
+    r.onerror = () => rej(new Error("lecture"));
+    r.readAsDataURL(file);
+  });
+}
+function verifierMusique(f) {
+  if (!f) return "Aucun fichier.";
+  if (!(f.type || "").startsWith("audio/")) return "Choisis un fichier audio (mp3, m4a, wav…).";
+  if (f.size > MUSIQUE_MAX) return "Cette musique est trop lourde (maximum 4 Mo). Choisis un morceau plus court.";
+  return "";
+}
+async function supprimerMusique(tid) {
+  const sn = await getDocs(query(collection(db, "musiques"), where("tableId", "==", tid)));
+  for (const d of sn.docs) await deleteDoc(d.ref);
+}
+async function envoyerMusique(tid, file) {
+  const b64 = await lireBase64(file);
+  const n = Math.max(1, Math.ceil(b64.length / MORCEAU));
+  const v = Date.now();
+  const mime = file.type || "audio/mpeg";
+  await supprimerMusique(tid);
+  for (let i = 0; i < n; i++) {
+    await setDoc(doc(db, "musiques", tid + "_" + i), { tableId: tid, i, total: n, v, mime, data: b64.slice(i * MORCEAU, (i + 1) * MORCEAU) });
+  }
+  await updateDoc(doc(db, "tables", tid), { musique: { name: file.name.slice(0, 60), parts: n, mime, v } });
+}
+async function ajouterMusique(tid, file) {
+  const err = verifierMusique(file);
+  if (err) { msg(err); return; }
+  msg("Envoi de la musique…");
+  try { await envoyerMusique(tid, file); msg("Musique ajoutée à la table."); }
+  catch (e) { msg("Erreur : " + (e.code || e.message)); }
+}
+async function retirerMusique(tid) {
+  try {
+    await updateDoc(doc(db, "tables", tid), { musique: null });
+    await supprimerMusique(tid);
+    msg("Musique retirée.");
+  } catch (e) { msg("Erreur : " + (e.code || e.message)); }
+}
+$("btnMusique").onclick = () => $("fichierMusique").click();
+$("btnMusiqueRetirer").onclick = () => { musiqueChoisie = null; $("musiqueNom").textContent = "Aucune musique de fond"; };
+$("fichierMusique").onchange = ev => {
+  const f = ev.target.files[0];
+  ev.target.value = "";
+  if (!f) return;
+  const err = verifierMusique(f);
+  if (err) { msg(err); return; }
+  musiqueChoisie = f;
+  $("musiqueNom").textContent = "🎵 " + f.name;
+  msg("");
+};
+
 async function viderOuSupprimer(id, supprimer) {
   try {
     await runTransaction(db, async tx => {
@@ -1055,6 +1139,7 @@ async function viderOuSupprimer(id, supprimer) {
       if (supprimer) tx.delete(tref);
       else tx.update(tref, { players: (t.players || []).filter(p => p.bot), hand: null, pot: 0, dernier: "", finAt: Date.now() });
     });
+    if (supprimer) { try { await supprimerMusique(id); } catch (e) { /* sans importance */ } }
     msg(supprimer ? "Table supprimée." : "Table vidée.");
   } catch (e) { msg("Erreur : " + (e.code || e.message)); }
 }
@@ -1219,6 +1304,92 @@ function verifierChrono() {
   expirer(h.turn, h.deadline).catch(() => {});
 }
 
+/* ---------- Sons (compte à rebours, actions) et musique de fond ---------- */
+let sonActif = true, audioCtx = null, actionVue = null, cleTourSon = "", dernierTick = 99;
+let musiqueV = null, audioMusique = null, musiqueURL = "", musiqueChoisie = null;
+try { sonActif = localStorage.getItem("sonActif") !== "0"; } catch (e) {}
+function ctxAudio() {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === "suspended") audioCtx.resume();
+  } catch (e) { return null; }
+  return audioCtx;
+}
+function note(f, debut, duree, type, vol, f2) {
+  const c = ctxAudio();
+  if (!c) return;
+  const t0 = c.currentTime + debut;
+  const o = c.createOscillator(), g = c.createGain();
+  o.type = type || "sine";
+  o.frequency.setValueAtTime(f, t0);
+  if (f2) o.frequency.exponentialRampToValueAtTime(f2, t0 + duree);
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(vol || 0.2, t0 + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + duree);
+  o.connect(g); g.connect(c.destination);
+  o.start(t0); o.stop(t0 + duree + 0.02);
+}
+const SONS = {
+  tour: () => { note(660, 0, 0.14, "sine", 0.25); note(880, 0.15, 0.22, "sine", 0.25); },
+  tick: () => note(740, 0, 0.07, "square", 0.12),
+  tickFinal: () => note(980, 0, 0.14, "square", 0.18),
+  raise: () => { note(520, 0, 0.09, "triangle", 0.25); note(660, 0.09, 0.09, "triangle", 0.25); note(880, 0.18, 0.16, "triangle", 0.28); },
+  fold: () => note(330, 0, 0.28, "sawtooth", 0.1, 150),
+  call: () => { note(500, 0, 0.07, "triangle", 0.25); note(700, 0.07, 0.1, "triangle", 0.22); },
+  check: () => { note(220, 0, 0.06, "sine", 0.3); note(220, 0.11, 0.06, "sine", 0.3); }
+};
+function son(nom) {
+  if (!sonActif) return;
+  try { if (SONS[nom]) SONS[nom](); } catch (e) {}
+}
+function sonsTour() {
+  const h = etat && etat.hand;
+  if (!h || !h.turn || h.turn !== moi() || !h.deadline) { cleTourSon = ""; return; }
+  const cle = h.turn + "|" + h.deadline;
+  if (cle !== cleTourSon) { cleTourSon = cle; dernierTick = 99; son("tour"); }
+  const reste = Math.ceil((h.deadline - Date.now()) / 1000);
+  if (reste <= 5 && reste >= 1 && reste !== dernierTick) { dernierTick = reste; son(reste === 1 ? "tickFinal" : "tick"); }
+}
+function majBtnSon() { $("btnSon").textContent = sonActif ? "🔊" : "🔇"; }
+$("btnSon").onclick = () => {
+  sonActif = !sonActif;
+  try { localStorage.setItem("sonActif", sonActif ? "1" : "0"); } catch (e) {}
+  majBtnSon();
+  if (audioMusique) { if (sonActif) audioMusique.play().catch(() => {}); else audioMusique.pause(); }
+  if (sonActif) son("call");
+};
+majBtnSon();
+document.addEventListener("pointerdown", () => {
+  ctxAudio();
+  if (audioMusique && sonActif && audioMusique.paused) audioMusique.play().catch(() => {});
+}, { passive: true });
+
+function arreterMusique() {
+  if (audioMusique) { try { audioMusique.pause(); } catch (e) {} audioMusique = null; }
+  if (musiqueURL) { URL.revokeObjectURL(musiqueURL); musiqueURL = ""; }
+}
+async function chargerMusique(tid, meta) {
+  const v = meta ? meta.v : null;
+  if (v === musiqueV) return;
+  musiqueV = v;
+  arreterMusique();
+  if (!meta || !tid) return;
+  try {
+    const snap = await getDocs(query(collection(db, "musiques"), where("tableId", "==", tid)));
+    if (musiqueV !== v) return;
+    const parts = snap.docs.map(d => d.data()).filter(p => p.v === v).sort((a, b) => a.i - b.i);
+    if (parts.length !== meta.parts) return;
+    const bin = atob(parts.map(p => p.data).join(""));
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    musiqueURL = URL.createObjectURL(new Blob([arr], { type: meta.mime || "audio/mpeg" }));
+    audioMusique = new Audio(musiqueURL);
+    audioMusique.loop = true;
+    audioMusique.volume = 0.3;
+    if (sonActif) audioMusique.play().catch(() => {});
+  } catch (e) { /* la musique est facultative */ }
+}
+
 /* ---------- Table mise à l'échelle pour tenir sur l'écran ---------- */
 const DW = 360, DH = 596;
 let reserveBas = 200;
@@ -1242,6 +1413,7 @@ window.addEventListener("orientationchange", () => setTimeout(ajusterTable, 200)
 /* ---------- Navigation ---------- */
 function montrerLobby() {
   document.body.classList.remove("enTable");
+  arreterMusique(); musiqueV = null; actionVue = null;
   appliquerDeco(null);
   if (stopTable) { stopTable(); stopTable = null; }
   tableCourante = null;
@@ -1254,6 +1426,7 @@ function ouvrirTable(id) {
   tableCourante = id;
   betsPrec = {};
   sansMainDepuis = 0;
+  actionVue = null; musiqueV = null; cleTourSon = "";
   msg("");
   $("lobby").style.display = "none";
   document.body.classList.add("enTable");
@@ -1290,6 +1463,11 @@ function majTexte() {
 
 function dessinerTable(t) {
   etat = t;
+  if (t.action) {
+    if (actionVue === null) actionVue = t.action.n;
+    else if (t.action.n !== actionVue) { actionVue = t.action.n; son(t.action.type); }
+  } else if (actionVue === null) actionVue = 0;
+  chargerMusique(tableCourante, t.musique || null);
   const uid = moi();
   const h = t.hand || null;
   const joueurs = t.players || [];
@@ -1505,7 +1683,7 @@ $("btnAllin").onclick = () => jouer("raise", $("btnAllin").dataset.cible);
 $("btnLancer").onclick = () => lancerMain(false);
 $("btnFin").onclick = annulerMain;
 
-setInterval(() => { majTexte(); verifierChrono(); verifierAuto(); verifierBots(); }, 500);
+setInterval(() => { majTexte(); verifierChrono(); verifierAuto(); verifierBots(); sonsTour(); }, 500);
 
 /* ---------- Compte et lobby ---------- */
 $("btnCreer").onclick = async () => {
@@ -1570,7 +1748,7 @@ $("btnTable").onclick = async () => {
   const caveMax = neutre ? 2000 : Math.floor(Number($("caveMaxTable").value) || 0);
   if (caveMax && caveMax < caveMin) { msg("La cave maximum doit être supérieure au minimum."); return; }
   try {
-    await addDoc(collection(db, "tables"), {
+    const nouvelle = await addDoc(collection(db, "tables"), {
       name: nom,
       owner: auth.currentUser.uid,
       maxPlayers: 9,
@@ -1585,6 +1763,14 @@ $("btnTable").onclick = async () => {
     });
     $("nomTable").value = "";
     msg("");
+    if (musiqueChoisie) {
+      const f = musiqueChoisie;
+      musiqueChoisie = null;
+      $("musiqueNom").textContent = "Aucune musique de fond";
+      msg("Table créée. Envoi de la musique…");
+      try { await envoyerMusique(nouvelle.id, f); msg("Table créée avec sa musique."); }
+      catch (e) { msg("Table créée, mais la musique n'a pas pu être envoyée : " + (e.code || e.message)); }
+    }
   } catch (e) { msg("Erreur : " + e.code); }
 };
 
@@ -1755,7 +1941,27 @@ function afficherTables(snap, user, pseudo) {
         vider.textContent = "Vider la table";
         vider.className = "gris";
         vider.onclick = () => { conf = { id: d.id, action: "vider" }; rafraichir(); };
-        p.append(inpNom, selType, selBl, inMin, inMax, ok, vider);
+        const ligMus = document.createElement("div");
+        ligMus.className = "ligne";
+        const nomMus = document.createElement("span");
+        nomMus.className = "mini";
+        nomMus.textContent = t.musique ? "🎵 " + t.musique.name : "Aucune musique de fond";
+        const fMus = document.createElement("input");
+        fMus.type = "file"; fMus.accept = "audio/*"; fMus.hidden = true;
+        fMus.onchange = () => { const f = fMus.files[0]; fMus.value = ""; if (f) ajouterMusique(d.id, f); };
+        const btnsMus = document.createElement("div");
+        btnsMus.className = "btns";
+        const bMus = document.createElement("button");
+        bMus.textContent = "Insérer une musique";
+        bMus.className = "gris";
+        bMus.onclick = () => fMus.click();
+        const bMusR = document.createElement("button");
+        bMusR.textContent = "Retirer";
+        bMusR.className = "gris";
+        bMusR.onclick = () => retirerMusique(d.id);
+        btnsMus.append(bMus, bMusR);
+        ligMus.append(nomMus, fMus, btnsMus);
+        p.append(inpNom, selType, selBl, inMin, inMax, ligMus, ok, vider);
         carte.append(p);
       }
     }
@@ -2046,4 +2252,4 @@ onAuthStateChanged(auth, async user => {
 });
 </script>
 </body>
-</html>
+  </html>
