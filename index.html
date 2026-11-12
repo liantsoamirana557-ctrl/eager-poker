@@ -19,7 +19,14 @@
   .quitter{background:#c0392b;color:#fff}
   .gris{background:#8aa;color:#022}
 
-  .salle{position:relative;width:100%;max-width:360px;height:580px;margin:10px auto 60px}
+  .salle{position:relative;width:360px;height:580px;margin:0;transform-origin:0 0}
+  #salleWrap{position:relative;margin:4px auto 0}
+  body.enTable{padding:6px 6px 24px}
+  body.enTable h1{display:none}
+  #enteteTable{display:flex;align-items:center;gap:8px;max-width:360px;margin:0 auto 2px}
+  #enteteTable button{width:auto;max-width:none;margin:0;padding:6px 12px}
+  #enteteTable h2{margin:0;font-size:15px;flex:1;text-align:left}
+  #zoneBas{max-width:360px;margin:0 auto}
   .felt{position:absolute;left:14%;right:14%;top:9%;bottom:9%;background:#1b7a4f;border:8px solid #5a3a1a;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;box-sizing:border-box;padding:0 6px}
   .pot{font-size:15px;margin-bottom:8px}
   #phase{font-size:12px;color:#cde;margin-bottom:6px;min-height:15px}
@@ -83,6 +90,14 @@
   .chrono{font-size:13px;color:#4cf;font-weight:bold}
   .att{color:#ffd37a}.ok{color:#7fe3a0}.non{color:#ff9a9a}
   #dernier{margin-top:12px;color:#cde;font-size:14px}
+  #maMainBox{margin:2px auto 6px;font-size:13px}
+  #maMainBox .cc.grand{width:40px;height:56px;font-size:15px}
+  #actions{max-width:340px;grid-template-columns:1fr 1fr 1fr;gap:6px;padding:8px;margin:0 auto 8px}
+  #actions #infoAction{font-size:13px}
+  #actions button{padding:9px 4px;font-size:13px}
+  #actions #btnRaise{grid-column:auto;order:3;padding:9px 4px;font-size:14px;letter-spacing:0}
+  #actions #btnCall{order:2}
+  #actions #btnFold{order:1}
 </style>
 </head>
 <body>
@@ -189,8 +204,9 @@
 </div>
 
 <div id="tableView" style="display:none">
-  <h2 id="titreTable"></h2>
+  <div id="enteteTable"><button id="btnRetourHaut" class="gris">←</button><h2 id="titreTable"></h2></div>
   <div id="bandeauTable" class="bandeau"></div>
+  <div id="salleWrap">
   <div class="salle">
     <div class="felt">
       <div id="decoCentre"></div>
@@ -203,7 +219,9 @@
     <div id="mises"></div>
     <div id="volants"></div>
   </div>
+  </div>
 
+  <div id="zoneBas">
   <div id="maMainBox" style="display:none">
     <div id="maMainTitre"></div>
     <div class="rangee" id="maMain"></div>
@@ -215,6 +233,8 @@
     <button id="btnRaise">Raise</button>
     <button id="btnCall">Check</button>
     <button id="btnFold" class="quitter">Se coucher</button>
+  </div>
+
   </div>
 
   <div id="choixGagnant" style="display:none"></div>
@@ -1199,8 +1219,28 @@ function verifierChrono() {
   expirer(h.turn, h.deadline).catch(() => {});
 }
 
+/* ---------- Table mise à l'échelle pour tenir sur l'écran ---------- */
+const DW = 360, DH = 596;
+let reserveBas = 200;
+function ajusterTable() {
+  const tv = $("tableView");
+  if (!tv || tv.style.display === "none") return;
+  const wrap = $("salleWrap"), salle = wrap.querySelector(".salle");
+  const vw = document.documentElement.clientWidth - 12;
+  const haut = wrap.getBoundingClientRect().top + window.scrollY;
+  const dispo = window.innerHeight - haut - reserveBas - 6;
+  let sc = Math.min(vw / DW, dispo / DH, 1.25);
+  if (!(sc > 0.4)) sc = 0.4;
+  salle.style.transform = "scale(" + sc + ")";
+  wrap.style.width = Math.round(DW * sc) + "px";
+  wrap.style.height = Math.round(DH * sc) + "px";
+}
+window.addEventListener("resize", ajusterTable);
+window.addEventListener("orientationchange", () => setTimeout(ajusterTable, 200));
+
 /* ---------- Navigation ---------- */
 function montrerLobby() {
+  document.body.classList.remove("enTable");
   appliquerDeco(null);
   if (stopTable) { stopTable(); stopTable = null; }
   tableCourante = null;
@@ -1215,7 +1255,10 @@ function ouvrirTable(id) {
   sansMainDepuis = 0;
   msg("");
   $("lobby").style.display = "none";
+  document.body.classList.add("enTable");
+  window.scrollTo(0, 0);
   $("tableView").style.display = "block";
+  ajusterTable();
   if (stopTable) stopTable();
   stopTable = onSnapshot(doc(db, "tables", id), snap => {
     if (!snap.exists()) { montrerLobby(); msg("Cette table n'existe plus."); return; }
@@ -1385,6 +1428,9 @@ function dessinerTable(t) {
   $("dernier").textContent = t.dernier ? "Dernière main : " + t.dernier : "";
 
   majActions(t);
+  reserveBas = joueurs.some(p => p.uid === uid) ? 200 : 40;
+  $("zoneBas").style.minHeight = reserveBas + "px";
+  ajusterTable();
   $("btnQuitterTable").style.display = (adminActif() && !joueurs.some(p => p.uid === uid)) ? "none" : "";
   afficherBots(t);
   afficherDeco(t);
@@ -1601,6 +1647,7 @@ async function quitter(id) {
 }
 
 $("btnRetour").onclick = () => montrerLobby();
+$("btnRetourHaut").onclick = () => montrerLobby();
 $("btnQuitterTable").onclick = () => { if (tableCourante) quitter(tableCourante); };
 
 function afficherTables(snap, user, pseudo) {
