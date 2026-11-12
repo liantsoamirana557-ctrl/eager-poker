@@ -61,8 +61,8 @@
   .ligne{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;padding:6px 0;border-top:1px solid #ffffff22;text-align:left}
   .ligne .btns{display:flex;gap:6px;flex:none}
   .ligne button{width:auto;margin:0;padding:6px 10px;font-size:13px}
-  .volets{display:flex;gap:6px;max-width:340px;margin:10px auto}
-  .volets button{flex:1;width:auto;max-width:none;min-width:0;margin:0;padding:8px 4px;font-size:13px;background:#8aa;color:#022}
+  .volets{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:6px;max-width:340px;margin:10px auto}
+  .volets button{width:auto;max-width:none;min-width:0;margin:0;padding:8px 2px;font-size:12px;line-height:1.15;background:#8aa;color:#022}
   .volets button.actif{background:#f4b400}
   #modeBox{max-width:340px;margin:6px auto;display:flex;align-items:center;justify-content:space-between;gap:8px}
   #modeBox button{width:auto;max-width:none;margin:0;padding:7px 12px;font-size:13px}
@@ -129,6 +129,7 @@
     <button id="vProfil" class="actif">Mon profil</button>
     <button id="vJetons">Gestion des jetons</button>
     <button id="vTables">Table</button>
+    <button id="vAdmins" style="display:none">Admins</button>
   </div>
 
   <div id="paneProfil" class="pane">
@@ -169,7 +170,7 @@
     <div id="demandesAttente"></div>
     <h3 style="margin-top:12px">Historique</h3>
     <div id="historique"></div>
-    <h3 style="margin-top:12px">Membres</h3>
+    <h3 id="titreMembres" style="margin-top:12px">Membres</h3>
     <div id="membres"></div>
   </div>
 
@@ -201,6 +202,18 @@
   </div>
   <h2 id="titreListe">Tables ouvertes</h2>
   <div id="liste"></div>
+  </div>
+
+  <div id="paneAdmins" class="pane" style="display:none">
+  <div class="boite">
+    <h3>Gestionnaires de jetons</h3>
+    <div class="mini" style="word-break:normal">Une personne ajoutée ici peut accepter ou refuser les demandes de jetons et voir leur historique. Elle ne peut rien faire d'autre : ni tables, ni cartes, ni commissions.</div>
+    <div id="listeGest"></div>
+    <h3 style="margin-top:12px">Ajouter un gestionnaire</h3>
+    <input id="filtreGest" type="text" placeholder="Chercher un membre (pseudo ou contact)">
+    <select id="choixGest"></select>
+    <button id="btnAjoutGest">Ajouter comme gestionnaire</button>
+  </div>
   </div>
 
   <button id="btnSortir" class="quitter">Se déconnecter</button>
@@ -316,27 +329,103 @@ const ADMIN_UID = "vIia3H24Mla7zkdEBdUTn0VaIkD3";
 let pseudoCourant = "", dernierTables = null, mesDemandes = [], stopDem = null, stopAdmin = null, stopCom = null, sansMainDepuis = 0, dernierAuto = 0, abattageDepuis = 0, dernierAbattage = 0, botCle = "", botVuA = 0, botEnvoye = "", botsSig = "", profilOk = false, rappelFait = false, stopMem = [], profilPhoto = "", decoImageData = "";
 let modeAdmin = true, voletCourant = "profil";
 const adminActif = () => moi() === ADMIN_UID && modeAdmin;
+let stopRole = null, gestOk = false, listeU = [], mapM = {}, listeGest = [];
 function montrerVolet(v) {
   voletCourant = v;
-  [["profil", "Profil"], ["jetons", "Jetons"], ["tables", "Tables"]].forEach(k => {
+  [["profil", "Profil"], ["jetons", "Jetons"], ["tables", "Tables"], ["admins", "Admins"]].forEach(k => {
     $("pane" + k[1]).style.display = k[0] === v ? "block" : "none";
     $("v" + k[1]).classList.toggle("actif", k[0] === v);
   });
 }
 function majVue() {
   const estAd = moi() === ADMIN_UID;
+  const estGest = !estAd && gestOk;
   const adm = adminActif();
-  $("modeBox").style.display = estAd ? "flex" : "none";
-  $("btnMode").textContent = adm ? "Passer en mode joueur" : "Passer en mode administrateur";
-  $("modeLabel").textContent = adm ? "Mode administrateur" : "Mode joueur";
-  $("jetonsJoueur").style.display = adm ? "none" : "block";
-  $("adminBox").style.display = adm ? "block" : "none";
-  $("caveBox").style.display = adm ? "none" : "block";
+  const gest = estGest && modeAdmin;
+  const staff = adm || gest;
+  $("modeBox").style.display = (estAd || estGest) ? "flex" : "none";
+  $("btnMode").textContent = staff ? "Passer en mode joueur" : (estAd ? "Passer en mode administrateur" : "Passer en mode gestionnaire");
+  $("modeLabel").textContent = adm ? "Mode administrateur" : (gest ? "Mode gestionnaire des jetons" : "Mode joueur");
+  $("jetonsJoueur").style.display = staff ? "none" : "block";
+  $("adminBox").style.display = staff ? "block" : "none";
+  ["commissions", "titreMembres", "membres"].forEach(id => { $(id).style.display = gest ? "none" : ""; });
+  $("caveBox").style.display = staff ? "none" : "block";
   $("creerBox").style.display = adm ? "block" : "none";
+  $("vTables").style.display = gest ? "none" : "";
+  $("vAdmins").style.display = adm ? "" : "none";
   $("vTables").textContent = adm ? "Création et tables" : "Table";
   $("titreListe").textContent = adm ? "Tables (entre pour voir et administrer)" : "Tables ouvertes";
+  if ((voletCourant === "admins" && !adm) || (voletCourant === "tables" && gest)) montrerVolet("jetons");
   if (dernierTables && auth.currentUser) afficherTables(dernierTables, auth.currentUser, pseudoCourant);
 }
+function majAbonnementStaff() {
+  const staff = moi() === ADMIN_UID || gestOk;
+  if (staff && !stopAdmin) {
+    stopAdmin = onSnapshot(
+      query(collection(db, "demandes"), orderBy("createdAt", "desc"), limit(50)),
+      afficherAdmin,
+      e => msg("Erreur : " + e.code)
+    );
+  }
+  if (!staff && stopAdmin) { stopAdmin(); stopAdmin = null; }
+}
+function dessinerGest() {
+  const box = $("listeGest");
+  if (!box) return;
+  box.textContent = "";
+  if (!listeGest.length) box.appendChild(ligne("Aucun gestionnaire pour l'instant.", "", ""));
+  listeGest.forEach(g => {
+    const l = ligne((g.name || "?") + (g.contact ? " (" + g.contact + ")" : ""), "", "");
+    const b = document.createElement("div");
+    b.className = "btns";
+    const r = document.createElement("button");
+    r.textContent = "Retirer";
+    r.className = "quitter";
+    r.onclick = () => retirerGest(g.id);
+    b.appendChild(r);
+    l.appendChild(b);
+    box.appendChild(l);
+  });
+  const sel = $("choixGest");
+  const f = $("filtreGest").value.trim().toLowerCase();
+  const deja = new Set(listeGest.map(g => g.id));
+  const prec = sel.value;
+  sel.textContent = "";
+  const cand = listeU.filter(u => u.id !== ADMIN_UID && !deja.has(u.id))
+    .map(u => ({ id: u.id, nom: u.name || "?", c: (mapM[u.id] && mapM[u.id].contact) || "" }))
+    .filter(x => !f || (x.nom + " " + x.c).toLowerCase().includes(f))
+    .sort((a, b) => String(a.nom).localeCompare(String(b.nom)));
+  if (!cand.length) {
+    const op = document.createElement("option");
+    op.value = ""; op.textContent = "Aucun membre trouvé";
+    sel.appendChild(op);
+  }
+  cand.forEach(x => {
+    const op = document.createElement("option");
+    op.value = x.id;
+    op.textContent = x.nom + (x.c ? " · " + x.c : "");
+    sel.appendChild(op);
+  });
+  if (prec && cand.some(x => x.id === prec)) sel.value = prec;
+}
+async function ajouterGest() {
+  if (moi() !== ADMIN_UID) return;
+  const uid = $("choixGest").value;
+  if (!uid) { msg("Choisis un membre dans la liste."); return; }
+  const u = listeU.find(x => x.id === uid);
+  try {
+    await setDoc(doc(db, "gestionnaires", uid), { name: (u && u.name) || "", contact: (mapM[uid] && mapM[uid].contact) || "", ajouteLe: serverTimestamp() });
+    msg(((u && u.name) || "Le membre") + " peut maintenant gérer les jetons.");
+  } catch (e) { msg("Erreur : " + (e.code || e.message)); }
+}
+async function retirerGest(uid) {
+  if (moi() !== ADMIN_UID) return;
+  try { await deleteDoc(doc(db, "gestionnaires", uid)); msg("Gestionnaire retiré."); }
+  catch (e) { msg("Erreur : " + (e.code || e.message)); }
+}
+$("btnAjoutGest").onclick = ajouterGest;
+$("filtreGest").oninput = dessinerGest;
+$("vAdmins").onclick = () => montrerVolet("admins");
 $("vProfil").onclick = () => montrerVolet("profil");
 $("vJetons").onclick = () => montrerVolet("jetons");
 $("vTables").onclick = () => montrerVolet("tables");
@@ -2134,6 +2223,11 @@ function afficherAdmin(snap) {
   if (!enAttente.length) att.appendChild(ligne("Aucune demande en attente.", "", ""));
   enAttente.forEach(d => {
     const l = ligne(qui(d) + " · " + d.montant + " jetons · " + quand(d) + " · code : " + (d.code || "aucun"), "", "");
+    if (d.uid === moi() && moi() !== ADMIN_UID) {
+      l.appendChild(ligne("Ta propre demande : seule Eager Poker peut l'accepter.", "", ""));
+      att.appendChild(l);
+      return;
+    }
     const b = document.createElement("div");
     b.className = "btns";
     const ok = document.createElement("button");
@@ -2161,6 +2255,8 @@ onAuthStateChanged(auth, async user => {
   if (stopDem) { stopDem(); stopDem = null; }
   if (stopAdmin) { stopAdmin(); stopAdmin = null; }
   if (stopCom) { stopCom(); stopCom = null; }
+  if (stopRole) { stopRole(); stopRole = null; }
+  gestOk = false; listeU = []; mapM = {}; listeGest = [];
   stopMem.forEach(f => f()); stopMem = []; rappelFait = false;
   mesDemandes = []; dernierTables = null;
   if (stopTable) { stopTable(); stopTable = null; }
@@ -2207,49 +2303,4 @@ onAuthStateChanged(auth, async user => {
 
   stopTables = onSnapshot(
     query(collection(db, "tables"), orderBy("createdAt", "desc")),
-    snap => afficherTables(snap, user, pseudo),
-    e => msg("Erreur : " + e.code)
-  );
-
-  stopDem = onSnapshot(
-    query(collection(db, "demandes"), where("uid", "==", user.uid)),
-    snap => {
-      mesDemandes = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-        .sort((a, b) => ((b.createdAt && b.createdAt.seconds) || 9e9) - ((a.createdAt && a.createdAt.seconds) || 9e9));
-      afficherMesDemandes();
-    },
-    e => msg("Erreur : " + e.code)
-  );
-
-  if (user.uid === ADMIN_UID) {
-    stopAdmin = onSnapshot(
-      query(collection(db, "demandes"), orderBy("createdAt", "desc"), limit(50)),
-      afficherAdmin,
-      e => msg("Erreur : " + e.code)
-    );
-    stopCom = onSnapshot(
-      query(collection(db, "commissions"), orderBy("createdAt", "desc"), limit(200)),
-      snap => {
-        let total = 0;
-        snap.forEach(d => { total += d.data().montant || 0; });
-        $("commissions").textContent = "Commissions de la table : " + total + " jetons (" + snap.size + " mains)";
-      },
-      e => msg("Erreur : " + e.code)
-    );
-    let listeU = [], mapM = {};
-    const dessinerMembres = () => {
-      const box = $("membres");
-      box.textContent = "";
-      box.appendChild(ligne(listeU.length + " membres", "", ""));
-      listeU.slice().sort((a, b) => String(a.name).localeCompare(String(b.name))).forEach(u => {
-        const c = (mapM[u.id] && mapM[u.id].contact) || u.email || "(pas encore reconnecté)";
-        box.appendChild(ligne((u.name || "?") + " · " + c + " · " + (u.chips || 0) + " jetons", "", ""));
-      });
-    };
-    stopMem.push(onSnapshot(collection(db, "users"), snap => { listeU = snap.docs.map(d => ({ id: d.id, ...d.data() })); dessinerMembres(); }, e => msg("Erreur : " + e.code)));
-    stopMem.push(onSnapshot(collection(db, "membres"), snap => { mapM = {}; snap.forEach(d => { mapM[d.id] = d.data(); }); dessinerMembres(); }, e => msg("Erreur : " + e.code)));
-  }
-});
-</script>
-</body>
-  </html>
+   
