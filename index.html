@@ -54,6 +54,12 @@
   .ligne{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;padding:6px 0;border-top:1px solid #ffffff22;text-align:left}
   .ligne .btns{display:flex;gap:6px;flex:none}
   .ligne button{width:auto;margin:0;padding:6px 10px;font-size:13px}
+  .volets{display:flex;gap:6px;max-width:340px;margin:10px auto}
+  .volets button{flex:1;width:auto;max-width:none;min-width:0;margin:0;padding:8px 4px;font-size:13px;background:#8aa;color:#022}
+  .volets button.actif{background:#f4b400}
+  #modeBox{max-width:340px;margin:6px auto;display:flex;align-items:center;justify-content:space-between;gap:8px}
+  #modeBox button{width:auto;max-width:none;margin:0;padding:7px 12px;font-size:13px}
+  #modeLabel{font-weight:bold;color:#f4b400;font-size:13px}
   .onglets{display:flex;gap:8px;max-width:260px;margin:8px auto}
   .onglets button{margin:0;padding:8px 6px}
   .ligne input{margin:0;max-width:none;flex:1;width:auto;padding:6px 8px;min-width:0}
@@ -102,6 +108,14 @@
 <div id="lobby" style="display:none">
   <div class="bar"><span id="pseudo"></span><span id="jetons"></span></div>
 
+  <div id="modeBox" style="display:none"><span id="modeLabel"></span><button id="btnMode" class="gris"></button></div>
+  <div class="volets">
+    <button id="vProfil" class="actif">Mon profil</button>
+    <button id="vJetons">Gestion des jetons</button>
+    <button id="vTables">Table</button>
+  </div>
+
+  <div id="paneProfil" class="pane">
   <div class="boite">
     <h3>Mon profil</h3>
     <input id="nouveauPseudo" type="text" maxlength="14" placeholder="Nouveau pseudo (2 à 14 lettres)">
@@ -119,19 +133,18 @@
     </div>
   </div>
 
-  <div class="boite">
-    <h3>Jetons</h3>
+  </div>
+
+  <div id="paneJetons" class="pane" style="display:none">
+  <div class="boite" id="jetonsJoueur">
+    <h3>Gestion des jetons</h3>
     <input id="codeValid" type="text" autocomplete="off" maxlength="64" placeholder="Code de validation (6 caractères minimum)">
     <input id="montant" type="number" min="1" step="1" inputmode="numeric" placeholder="Nombre de jetons demandés">
     <button id="btnDemande">Demander à Eager Poker</button>
     <input id="rendre" type="number" min="1" placeholder="Jetons à rendre">
     <button id="btnRendre" class="gris">Rendre à Eager Poker</button>
+    <h3 style="margin-top:12px">Historique</h3>
     <div id="mesDemandes"></div>
-  </div>
-
-  <div class="boite">
-    <h3>Cave</h3>
-    <input id="cave" type="number" min="2000" step="100" value="2000" placeholder="Cave (min 2000)">
   </div>
 
   <div class="boite" id="adminBox" style="display:none">
@@ -142,6 +155,14 @@
     <div id="historique"></div>
     <h3 style="margin-top:12px">Membres</h3>
     <div id="membres"></div>
+  </div>
+
+  </div>
+
+  <div id="paneTables" class="pane" style="display:none">
+  <div class="boite" id="caveBox">
+    <h3>Cave</h3>
+    <input id="cave" type="number" min="2000" step="100" value="2000" placeholder="Cave (min 2000)">
   </div>
 
   <div class="boite" id="creerBox" style="display:none">
@@ -160,8 +181,10 @@
     <input id="caveMaxTable" type="number" min="2000" step="100" placeholder="Cave maximum (vide = sans limite)">
     <button id="btnTable">Créer la table</button>
   </div>
-  <h2>Tables ouvertes</h2>
+  <h2 id="titreListe">Tables ouvertes</h2>
   <div id="liste"></div>
+  </div>
+
   <button id="btnSortir" class="quitter">Se déconnecter</button>
 </div>
 
@@ -262,6 +285,33 @@ const moi = () => auth.currentUser ? auth.currentUser.uid : null;
 const DELAI = 10000;
 const ADMIN_UID = "vIia3H24Mla7zkdEBdUTn0VaIkD3";
 let pseudoCourant = "", dernierTables = null, mesDemandes = [], stopDem = null, stopAdmin = null, stopCom = null, sansMainDepuis = 0, dernierAuto = 0, abattageDepuis = 0, dernierAbattage = 0, botCle = "", botVuA = 0, botEnvoye = "", botsSig = "", profilOk = false, rappelFait = false, stopMem = [], profilPhoto = "", decoImageData = "";
+let modeAdmin = true, voletCourant = "profil";
+const adminActif = () => moi() === ADMIN_UID && modeAdmin;
+function montrerVolet(v) {
+  voletCourant = v;
+  [["profil", "Profil"], ["jetons", "Jetons"], ["tables", "Tables"]].forEach(k => {
+    $("pane" + k[1]).style.display = k[0] === v ? "block" : "none";
+    $("v" + k[1]).classList.toggle("actif", k[0] === v);
+  });
+}
+function majVue() {
+  const estAd = moi() === ADMIN_UID;
+  const adm = adminActif();
+  $("modeBox").style.display = estAd ? "flex" : "none";
+  $("btnMode").textContent = adm ? "Passer en mode joueur" : "Passer en mode administrateur";
+  $("modeLabel").textContent = adm ? "Mode administrateur" : "Mode joueur";
+  $("jetonsJoueur").style.display = adm ? "none" : "block";
+  $("adminBox").style.display = adm ? "block" : "none";
+  $("caveBox").style.display = adm ? "none" : "block";
+  $("creerBox").style.display = adm ? "block" : "none";
+  $("vTables").textContent = adm ? "Création et tables" : "Table";
+  $("titreListe").textContent = adm ? "Tables (entre pour voir et administrer)" : "Tables ouvertes";
+  if (dernierTables && auth.currentUser) afficherTables(dernierTables, auth.currentUser, pseudoCourant);
+}
+$("vProfil").onclick = () => montrerVolet("profil");
+$("vJetons").onclick = () => montrerVolet("jetons");
+$("vTables").onclick = () => montrerVolet("tables");
+$("btnMode").onclick = () => { modeAdmin = !modeAdmin; majVue(); };
 let tableCourante = null;
 let stopUser = null, stopTables = null, stopTable = null;
 let etat = null;
@@ -774,7 +824,7 @@ $("btnAjoutBot").onclick = () => {
 };
 function afficherBots(t) {
   const box = $("botsBox");
-  if (moi() !== ADMIN_UID) { box.style.display = "none"; return; }
+  if (!adminActif()) { box.style.display = "none"; return; }
   box.style.display = "block";
   const bots = (t.players || []).filter(p => p.bot);
   const sig = tableCourante + "|" + bots.map(b => b.uid + b.name + (b.actif === false ? "0" : "1") + (b.photo ? "p" : "")).join(",");
@@ -1068,7 +1118,7 @@ function appliquerDeco(d) {
 }
 function afficherDeco(t) {
   const box = $("decoBox");
-  if (moi() !== ADMIN_UID) { box.style.display = "none"; return; }
+  if (!adminActif()) { box.style.display = "none"; return; }
   box.style.display = "block";
   const sig = tableCourante + "|" + JSON.stringify(t.deco || {});
   if (sig === decoSig) return;
@@ -1200,7 +1250,7 @@ function dessinerTable(t) {
   const h = t.hand || null;
   const joueurs = t.players || [];
 
-  $("titreTable").textContent = t.name + (uid === ADMIN_UID ? " (vue Eager Poker : toutes les cartes)" : "");
+  $("titreTable").textContent = t.name + (adminActif() ? " (vue Eager Poker : toutes les cartes)" : "");
   $("pot").textContent = t.pot || 0;
   majTexte();
 
@@ -1228,7 +1278,7 @@ function dessinerTable(t) {
       if (estMoi) s.classList.add("moi");
       if (h && h.turn === p.uid) s.classList.add("tour");
       const nom = document.createElement("b");
-      nom.textContent = estMoi ? "Toi" : p.name + (p.actif === false && uid === ADMIN_UID ? " (repos)" : "");
+      nom.textContent = estMoi ? "Toi" : p.name + (p.actif === false && adminActif() ? " (repos)" : "");
       const jetons = document.createElement("div");
       jetons.textContent = typeof p.stack === "number" ? "🪙 " + p.stack : "🪙 —";
       s.append(avatarEl(p.photo, p.name, p.uid, 30), nom, jetons);
@@ -1256,7 +1306,7 @@ function dessinerTable(t) {
           mise.textContent = "mise " + h.bets[p.uid];
           s.appendChild(mise);
         }
-        const admin = uid === ADMIN_UID;
+        const admin = adminActif();
         if ((admin || !h.folded[p.uid]) && !estMoi && h.hands && h.hands[p.uid]) {
           const rg = document.createElement("div");
           rg.className = "rangee";
@@ -1335,6 +1385,7 @@ function dessinerTable(t) {
   $("dernier").textContent = t.dernier ? "Dernière main : " + t.dernier : "";
 
   majActions(t);
+  $("btnQuitterTable").style.display = (adminActif() && !joueurs.some(p => p.uid === uid)) ? "none" : "";
   afficherBots(t);
   afficherDeco(t);
   appliquerDeco(t.deco);
@@ -1556,7 +1607,7 @@ function afficherTables(snap, user, pseudo) {
   dernierTables = snap;
   const liste = $("liste");
   liste.textContent = "";
-  if (snap.empty) { liste.textContent = "Aucune table pour l'instant. Crée la première !"; return; }
+  if (snap.empty) { liste.textContent = adminActif() ? "Aucune table pour l'instant. Crée la première !" : "Aucune table pour l'instant."; return; }
   snap.forEach(d => {
     const t = d.data();
     const joueurs = t.players || [];
@@ -1572,7 +1623,7 @@ function afficherTables(snap, user, pseudo) {
     noms.textContent = joueurs.length ? joueurs.map(p => p.name).join(", ") : "Table vide";
     carte.append(titre, info, noms);
     if (couleurOk(t.deco && t.deco.feutre)) carte.style.background = t.deco.feutre;
-    if (user.uid === ADMIN_UID) {
+    if (adminActif()) {
       const rafraichir = () => afficherTables(dernierTables, user, pseudo);
       const bar = document.createElement("div");
       bar.className = "ligne";
@@ -1651,15 +1702,24 @@ function afficherTables(snap, user, pseudo) {
       }
     }
 
-    if (dedans) {
-      const ouvrir = document.createElement("button");
-      ouvrir.textContent = "Ouvrir la table";
-      ouvrir.onclick = () => ouvrirTable(d.id);
+    const sortirBtn = () => {
       const sortir = document.createElement("button");
       sortir.textContent = "Quitter la table";
       sortir.className = "quitter";
       sortir.onclick = () => quitter(d.id);
-      carte.append(ouvrir, sortir);
+      return sortir;
+    };
+    if (adminActif()) {
+      const entrer = document.createElement("button");
+      entrer.textContent = "Entrer dans la table (voir et administrer)";
+      entrer.onclick = () => ouvrirTable(d.id);
+      carte.append(entrer);
+      if (dedans) carte.append(sortirBtn());
+    } else if (dedans) {
+      const ouvrir = document.createElement("button");
+      ouvrir.textContent = "Ouvrir la table";
+      ouvrir.onclick = () => ouvrirTable(d.id);
+      carte.append(ouvrir, sortirBtn());
     } else {
       const bouton = document.createElement("button");
       if (joueurs.length >= NB_SIEGES) {
@@ -1670,13 +1730,6 @@ function afficherTables(snap, user, pseudo) {
         bouton.onclick = () => rejoindre(d.id, pseudoCourant);
       }
       carte.append(bouton);
-      if (user.uid === ADMIN_UID) {
-        const obs = document.createElement("button");
-        obs.textContent = "Observer (toutes les cartes)";
-        obs.className = "gris";
-        obs.onclick = () => ouvrirTable(d.id);
-        carte.append(obs);
-      }
     }
     liste.appendChild(carte);
   });
@@ -1778,7 +1831,7 @@ $("btnDemande").onclick = async () => {
 function afficherMesDemandes() {
   const box = $("mesDemandes");
   box.textContent = "";
-  mesDemandes.slice(0, 5).forEach(d => {
+  mesDemandes.slice(0, 30).forEach(d => {
     const st = STATUT[d.statut] || ["?", ""];
     box.appendChild(ligne((d.type === "retour" ? "Rendu à Eager Poker : " : "Demande : ") + d.montant + " · " + quand(d), st[1], st[0]));
   });
@@ -1859,8 +1912,9 @@ onAuthStateChanged(auth, async user => {
   pseudoCourant = pseudo;
   $("pseudo").textContent = pseudo;
   $("monUid").textContent = user.uid;
-  $("adminBox").style.display = user.uid === ADMIN_UID ? "block" : "none";
-  $("creerBox").style.display = user.uid === ADMIN_UID ? "block" : "none";
+  modeAdmin = true;
+  montrerVolet("profil");
+  majVue();
 
   const ref = doc(db, "users", user.uid);
   try {
@@ -1934,4 +1988,4 @@ onAuthStateChanged(auth, async user => {
 });
 </script>
 </body>
-</html>
+  </html>
