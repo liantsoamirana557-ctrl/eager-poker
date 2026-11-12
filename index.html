@@ -474,7 +474,7 @@ function appliquerAction(t, uid, type, montant) {
     const maxCible = deja + joueur.stack;
     if (!(cible > 0)) throw new Error("montant");
     if (cible >= maxCible) cible = maxCible;
-    else if (cible < h.currentBet + h.minRaise) throw new Error("tropbas");
+    else if (cible <= h.currentBet) throw new Error("tropbas");
     miser(h, players, uid, cible - deja);
     const total = h.bets[uid];
     if (total > h.currentBet) {
@@ -515,7 +515,7 @@ function erreurJeu(e) {
   if (m === "min2") msg("Il faut au moins 2 joueurs avec des jetons.");
   else if (m === "deja") msg("Une main est déjà en cours.");
   else if (m === "pasvotretour") msg("Ce n'est pas ton tour.");
-  else if (m === "tropbas") msg("Relance trop faible.");
+  else if (m === "tropbas") msg("Ta relance doit dépasser la mise actuelle.");
   else if (m === "pascheck") msg("Tu dois suivre ou te coucher.");
   else if (m === "obsolete") { /* déjà traité par un autre joueur */ }
   else msg("Erreur : " + (e.code || m));
@@ -1465,22 +1465,16 @@ function majActions(t) {
   const br = $("btnRaise");
   const ba = $("btnAllin");
   champ.value = "";
-  champ.dataset.min = minTo;
+  champ.dataset.cur = h.currentBet;
   champ.dataset.max = maxTo;
-  br.dataset.min = minTo;
   if (peutRelancer) {
     ba.style.display = "";
     ba.textContent = "Tapis (" + maxTo + ")";
     ba.dataset.cible = maxTo;
-    if (maxTo > minTo) {
-      champ.placeholder = "Raise à… (min " + minTo + ")";
-      champ.style.display = "";
-      br.style.display = "";
-      br.textContent = "Raise";
-    } else {
-      champ.style.display = "none";
-      br.style.display = "none";
-    }
+    champ.placeholder = "Raise à… (ta mise totale)";
+    champ.style.display = "";
+    br.style.display = "";
+    br.textContent = "Raise";
   } else {
     champ.style.display = "none";
     br.style.display = "none";
@@ -1490,11 +1484,11 @@ function majActions(t) {
 
 function lancerRaise() {
   const champ = $("montantRaise");
-  const min = Number(champ.dataset.min), max = Number(champ.dataset.max);
+  const cur = Number(champ.dataset.cur), max = Number(champ.dataset.max);
   const v = Math.floor(Number(champ.value));
-  if (!champ.value.trim() || !(v > 0)) { msg("Écris le montant du raise (minimum " + min + ")."); return; }
+  if (!champ.value.trim() || !(v > 0)) { msg("Écris le montant de ton raise."); return; }
   if (v > max) { msg("Tu n'as que " + max + " jetons. Écris " + max + " ou touche Tapis."); return; }
-  if (v < min) { msg("Le raise minimum est de " + min + "."); return; }
+  if (v <= cur) { msg("La mise actuelle est " + cur + ". Écris un montant plus grand (c'est ta mise totale), ou touche Suivre."); return; }
   msg("");
   jouer("raise", v);
 }
